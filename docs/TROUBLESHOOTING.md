@@ -106,6 +106,9 @@ widepeek never edits `GameUserSettings.ini`. You can check the values there
 | Key | Meaning |
 |---|---|
 | `ResolutionSizeX`, `ResolutionSizeY` | Game resolution |
+| `LastUserConfirmedResolutionSizeX`, `LastUserConfirmedResolutionSizeY` | Game resolution |
+| `LastUserConfirmedDesiredScreenWidth`, `LastUserConfirmedDesiredScreenHeight` | Game resolution |
+| `DesiredScreenWidth`, `DesiredScreenHeight` | Game resolution |
 | `FullscreenMode` | `0` = Fullscreen, `1` = Windowed Fullscreen, `2` = Windowed |
 | `WindowPosX`, `WindowPosY` | Window position on the desktop |
 
