@@ -10,9 +10,9 @@ use windows::Win32::System::Console::{
 };
 use windows::core::BOOL;
 
-use crate::process::{self, WaitHandle};
+use crate::process;
 use crate::session::{self, StretchSession};
-use crate::window::{self, HiddenWindow, Wake};
+use crate::window::{self, HiddenWindow};
 use crate::{config, console, instance, riot};
 
 const START_POLL: Duration = Duration::from_secs(1);
@@ -59,26 +59,17 @@ fn wait_for_start(timeout: Duration) -> anyhow::Result<u32> {
                 timeout.as_secs()
             );
         }
-        window::wait(None, Some(START_POLL))?;
+        window::sleep(START_POLL)?;
     }
 }
 
-/// Waits on a `SYNCHRONIZE` handle. If the system denies the handle, it polls
-/// the process list every 5 s instead.
+/// Polls the process list until the game ends. widepeek never opens a
+/// handle to the game process (anti-cheat rule).
 fn wait_for_exit(pid: u32) -> anyhow::Result<()> {
-    match WaitHandle::open(pid) {
-        Ok(handle) => {
-            while window::wait(Some(handle.raw()), None)? != Wake::Signaled {}
-            Ok(())
-        }
-        Err(err) => {
-            warn!("cannot open the game for waiting ({err}); polling every 5 s");
-            while process::is_running(pid, riot::GAME_PROCESS) {
-                window::wait(None, Some(EXIT_POLL))?;
-            }
-            Ok(())
-        }
+    while process::is_running(pid, riot::GAME_PROCESS) {
+        window::sleep(EXIT_POLL)?;
     }
+    Ok(())
 }
 
 extern "system" fn launcher_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

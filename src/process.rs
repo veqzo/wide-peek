@@ -1,20 +1,19 @@
-//! Process lookup with a Toolhelp snapshot and a wait handle for the game.
+//! Process lookup with a Toolhelp snapshot.
 //!
-//! Anti-cheat rule: widepeek opens the game only with `SYNCHRONIZE`. It never
-//! asks for other access rights and never reads, writes or injects into it.
+//! Anti-cheat rule: widepeek never opens a handle to the game process. It
+//! only reads the system process list, like the Task Manager, and never
+//! reads, writes or injects into the game.
 
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 
 use anyhow::Context;
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
-use windows::Win32::System::Threading::{
-    CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS, OpenProcess, PROCESS_SYNCHRONIZE,
-};
+use windows::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
 
 use crate::wide::from_wide;
 
@@ -52,29 +51,6 @@ pub fn find(exe_name: &str) -> Option<u32> {
 /// against a reused PID.
 pub fn is_running(pid: u32, exe_name: &str) -> bool {
     find_in_snapshot(|p, name| p == pid && name.eq_ignore_ascii_case(exe_name)).is_some()
-}
-
-/// A handle with only the `SYNCHRONIZE` right, for waiting on the end of a
-/// process.
-#[derive(Debug)]
-pub struct WaitHandle(HANDLE);
-
-impl WaitHandle {
-    pub fn open(pid: u32) -> windows::core::Result<Self> {
-        // SAFETY: only SYNCHRONIZE, no inheritance.
-        unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) }.map(Self)
-    }
-
-    pub fn raw(&self) -> HANDLE {
-        self.0
-    }
-}
-
-impl Drop for WaitHandle {
-    fn drop(&mut self) {
-        // SAFETY: we own the handle.
-        let _ = unsafe { CloseHandle(self.0) };
-    }
 }
 
 /// Starts a program without a console and without waiting for it.

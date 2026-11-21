@@ -6,9 +6,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use windows::Win32::Foundation::{
-    HANDLE, HWND, LPARAM, LRESULT, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
-};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, MSG, MWMO_INPUTAVAILABLE,
@@ -109,48 +107,24 @@ pub fn pump_messages() {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Wake {
-    Signaled,
-    Timeout,
-}
-
-/// Waits for `handle` (or only for the time) and handles window messages
-/// while it waits. `None` as timeout waits without a limit.
-pub fn wait(handle: Option<HANDLE>, timeout: Option<Duration>) -> anyhow::Result<Wake> {
-    let deadline = timeout.map(|t| Instant::now() + t);
-    let handles: Vec<HANDLE> = handle.into_iter().collect();
-    let count = handles.len() as u32;
+/// Sleeps for `duration` and handles window messages while it sleeps.
+pub fn sleep(duration: Duration) -> anyhow::Result<()> {
+    let deadline = Instant::now() + duration;
     loop {
-        let millis = match deadline {
-            Some(d) => {
-                let left = d.saturating_duration_since(Instant::now());
-                u32::try_from(left.as_millis()).unwrap_or(u32::MAX - 1)
-            }
-            None => u32::MAX, // INFINITE
-        };
-        // SAFETY: the handles stay valid during the call.
-        let result = unsafe {
-            MsgWaitForMultipleObjectsEx(
-                (!handles.is_empty()).then_some(handles.as_slice()),
-                millis,
-                QS_ALLINPUT,
-                MWMO_INPUTAVAILABLE,
-            )
-        };
-        if count > 0 && result == WAIT_OBJECT_0 {
-            return Ok(Wake::Signaled);
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Ok(());
         }
-        if result.0 == WAIT_OBJECT_0.0 + count {
+        let millis = u32::try_from(left.as_millis()).unwrap_or(u32::MAX - 1);
+        // SAFETY: no handles; only the message queue.
+        let result =
+            unsafe { MsgWaitForMultipleObjectsEx(None, millis, QS_ALLINPUT, MWMO_INPUTAVAILABLE) };
+        if result == WAIT_OBJECT_0 {
             pump_messages();
-            if deadline.is_some_and(|d| Instant::now() >= d) {
-                return Ok(Wake::Timeout);
-            }
-            continue;
+        } else if result == WAIT_TIMEOUT {
+            return Ok(());
+        } else {
+            bail!("waiting failed: {}", windows::core::Error::from_thread());
         }
-        if result == WAIT_TIMEOUT {
-            return Ok(Wake::Timeout);
-        }
-        bail!("waiting failed: {}", windows::core::Error::from_thread());
     }
 }

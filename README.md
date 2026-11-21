@@ -87,9 +87,7 @@ can never be higher than the native refresh rate.
 4. Test the stretched mode with `CDS_TEST`, then apply it to the registry.
 5. Start the Riot Client with `--launch-product=valorant --launch-patchline=live`.
 6. Wait for `VALORANT-Win64-Shipping.exe` (process list every 1 s, timeout 5 min).
-7. Wait for the game to end with `OpenProcess(SYNCHRONIZE)` and
-   `WaitForSingleObject`. If Windows denies the handle, check the process list
-   every 5 s.
+7. Wait for the game to end: check the process list every 5 s.
 8. Restore the native mode, enable the monitor, delete the state file.
 
 widepeek and the Riot Client run **unelevated**. Only the monitor toggle runs
@@ -97,10 +95,11 @@ elevated, through the scheduled tasks.
 
 ### Anti-cheat (Vanguard)
 
-widepeek never reads, writes or injects into the game. The only access right
-it requests on the game process is `SYNCHRONIZE`, which lets it wait for the
-process to end. Everything else is the normal Windows display API and the
-Device Manager API.
+widepeek never opens a handle to the game process. It never reads, writes or
+injects into the game and sends no input to it. It only reads the system
+process list (Toolhelp), like the Task Manager does. Everything else is the
+normal Windows display API and the Device Manager API, and widepeek uses them
+before the game starts and after it ended.
 
 ## Restore guarantees
 
@@ -108,7 +107,7 @@ Your PC must never stay in the stretched mode or with a disabled monitor.
 
 | Event                                     | Restore path                                       |
 |-------------------------------------------|----------------------------------------------------|
-| Game ends normally                        | Launcher restores directly                         |
+| Game ends normally                        | Launcher restores within about 5 s                 |
 | Error or panic in widepeek                | Drop guard restores during unwind                  |
 | Console window closed, logoff, shutdown   | Console handler / `WM_ENDSESSION` restores         |
 | widepeek is killed hard, PC crashes, power loss | State file stays; `RestoreAtLogon` restores at the next logon, and the next widepeek start restores first |
@@ -165,7 +164,7 @@ Release build, Windows 11, 12 logical cores, about 210 processes.
 | One process-list lookup (Toolhelp) | 2.2 ms CPU                                          |
 | Tray, idle, 120 s           | 0.01–0.02 % of total CPU (0.17–0.25 % of one core)         |
 | Tray memory                 | 1.5 MB private, 0.6 MB working set (10 MB before the trim) |
-| Launcher                    | Not measured live (needs a real display change). It sleeps in `WaitForSingleObject` while the game runs, so it uses no CPU; before the game starts it does one Toolhelp lookup per second (about 0.2 % of one core). Its memory is the same as the tray's or lower. |
+| Launcher                    | Not measured live (needs a real display change). Before the game starts it does one Toolhelp lookup per second (about 0.2 % of one core); while the game runs, one every 5 s (about 0.04 % of one core). Its memory is the same as the tray's or lower. |
 
 The CPU time of Windows has a granularity of 15.6 ms, so the tray numbers are
 noisy.

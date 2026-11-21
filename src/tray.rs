@@ -11,11 +11,9 @@ use std::ffi::c_void;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WAIT_OBJECT_0, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::{
-    GetCurrentProcess, INFINITE, SetProcessWorkingSetSize, WaitForSingleObject,
-};
+use windows::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFY_ICON_MESSAGE,
     NOTIFYICONDATAW, Shell_NotifyIconW,
@@ -30,7 +28,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{HSTRING, PCWSTR, w};
 
-use crate::process::{self, WaitHandle};
+use crate::process;
 use crate::session::{self, StretchSession};
 use crate::window::{self, HiddenWindow};
 use crate::{config, instance, restore, riot, state, ui};
@@ -363,14 +361,9 @@ fn wait_for_game(timeout: Duration) -> anyhow::Result<Option<u32>> {
     }
 }
 
-/// Waits on a `SYNCHRONIZE` handle, or polls every 5 s if it is denied.
+/// Polls the process list until the game ends. widepeek never opens a
+/// handle to the game process (anti-cheat rule).
 fn wait_for_exit(pid: u32) {
-    match WaitHandle::open(pid) {
-        // SAFETY: the handle stays valid during the wait.
-        Ok(handle) if unsafe { WaitForSingleObject(handle.raw(), INFINITE) } == WAIT_OBJECT_0 => {}
-        Ok(_) => warn!("waiting for the game failed; polling every 5 s"),
-        Err(err) => warn!("cannot open the game for waiting ({err}); polling every 5 s"),
-    }
     while process::is_running(pid, riot::GAME_PROCESS) {
         std::thread::sleep(EXIT_POLL);
     }
