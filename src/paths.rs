@@ -52,6 +52,16 @@ pub fn state_file() -> anyhow::Result<PathBuf> {
     Ok(data_dir()?.join("state.json"))
 }
 
+/// Time of the last update check.
+pub fn update_stamp_file() -> anyhow::Result<PathBuf> {
+    Ok(data_dir()?.join("update.json"))
+}
+
+/// Downloaded updates wait here until they are installed.
+pub fn update_dir() -> anyhow::Result<PathBuf> {
+    Ok(data_dir()?.join("update"))
+}
+
 pub fn log_file() -> anyhow::Result<PathBuf> {
     Ok(data_dir()?.join("widepeek.log"))
 }

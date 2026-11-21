@@ -14,6 +14,7 @@ the table, then read the section.
 | widepeek cannot find or start the Riot Client | [Riot Client](#widepeek-cannot-find-or-start-the-riot-client) |
 | A UAC prompt comes at every start | [UAC prompt](#a-uac-prompt-comes-at-every-start) |
 | More input lag, or no G-Sync | [Input lag](#more-input-lag-or-no-g-sync) |
+| The update check or the update install fails | [Updates](#the-update-fails) |
 
 Before you start, open the log. Most errors are there with a clear text:
 
@@ -204,6 +205,28 @@ rights as a fallback.
   so Windows does not see their EDID and their variable refresh rate. This is
   a side effect of true stretched and not a bug. ICC profiles and HDR are also
   not available. Everything comes back after the game.
+
+## The update fails
+
+The automatic check writes its errors only to the log. A manual check
+(`widepeek update` or *Check for updates*) shows them.
+
+| Error | Fix |
+|---|---|
+| `widepeek or Valorant is running` | Close Valorant and wait until the display is native. Then update. |
+| `widepeek is not installed` | Run `widepeek setup` first. The update replaces `C:\Program Files\widepeek\widepeek.exe`. |
+| A network or `HTTP` error | Check the internet connection, a proxy or a firewall. widepeek uses the Windows proxy settings. The GitHub API also has a rate limit per IP address. Try again later. |
+| `does not match its SHA-256 file` or `does not match the SHA-256 of the release` | The download is damaged or changed. Try again. If it stays, open an issue. |
+| `is not a GitHub download host` or `too many redirects` | A proxy or a captive portal sent widepeek to another server. widepeek does not follow it. Check the network, then try again. |
+| `the download took longer than 5 minutes` | The connection is too slow or stalls. Try again later. |
+| `the update is signed by ...` or `is not signed` | The new exe has another signer than the installed one. widepeek does not install it. Open an issue. |
+| `Windows cannot check if the certificate ... is revoked` | Windows cannot reach the revocation server of the certificate. Check the internet connection, a proxy or a firewall. Then try again. |
+| `is not newer than the installed` | The installed widepeek is already this version or newer. Nothing to do. |
+| `the update file is not on a local disk` or `is not in ...` | The update folder in `%LocalAppData%` is on a network drive or is a link to one. Use a local profile folder, or install by hand (below). |
+| `the elevated update step failed` | You declined the UAC prompt, or the prompt used another Windows account. See the log for details. |
+
+To install by hand, download `widepeek.exe` from the release page and run
+`widepeek setup` with it.
 
 ---
 

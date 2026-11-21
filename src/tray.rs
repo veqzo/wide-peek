@@ -5,6 +5,10 @@
 //! one Toolhelp snapshot while no session runs. A worker thread runs the
 //! session, so the menu stays responsive. The launcher is the more reliable
 //! path: the tray stretches only after the game process starts.
+//!
+//! A second timer runs the daily update check (see `updates`).
+
+mod updates;
 
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
@@ -31,7 +35,8 @@ use windows::core::{HSTRING, PCWSTR, w};
 use crate::process;
 use crate::session::{self, StretchSession};
 use crate::window::{self, HiddenWindow};
-use crate::{config, instance, restore, riot, state, ui};
+use crate::{config, instance, paths, restore, riot, state, ui};
+use updates::Job;
 
 /// The trigger poll. One snapshot costs well below 1 ms of CPU.
 const POLL: Duration = Duration::from_secs(2);
@@ -49,6 +54,8 @@ const WM_TRAY_STATUS: u32 = WM_APP + 2;
 
 const CMD_RESTORE: usize = 1;
 const CMD_QUIT: usize = 2;
+const CMD_CHECK_UPDATE: usize = 3;
+const CMD_INSTALL_UPDATE: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -83,6 +90,8 @@ struct Tray {
     busy: Cell<bool>,
     was_running: Cell<bool>,
     status: Cell<Status>,
+    /// Start the new exe after the message loop ends.
+    restart: Cell<bool>,
 }
 
 thread_local! {
@@ -93,6 +102,7 @@ thread_local! {
             busy: Cell::new(false),
             was_running: Cell::new(false),
             status: Cell::new(Status::Waiting),
+            restart: Cell::new(false),
         }
     };
     /// Last error of the worker, shown in the menu.
@@ -100,7 +110,7 @@ thread_local! {
 }
 
 pub fn run() -> anyhow::Result<()> {
-    let Some(_lock) = instance::try_acquire(instance::TRAY)? else {
+    let Some(lock) = instance::try_acquire(instance::TRAY)? else {
         info!("the tray already runs");
         return Ok(());
     };
@@ -126,7 +136,20 @@ pub fn run() -> anyhow::Result<()> {
     if unsafe { SetTimer(Some(hwnd), TIMER_ID, POLL.as_millis() as u32, None) } == 0 {
         bail_remove(hwnd)?;
     }
+    // SAFETY: the window belongs to this thread.
+    if unsafe {
+        SetTimer(
+            Some(hwnd),
+            updates::TIMER_ID,
+            updates::POLL.as_millis() as u32,
+            None,
+        )
+    } == 0
+    {
+        bail_remove(hwnd)?;
+    }
     info!("tray started");
+    updates::start(hwnd, Job::Auto);
     // Startup pages (config parser, icon loading) are not needed again.
     // SAFETY: (-1, -1) only trims the working set of this process.
     let _ = unsafe { SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX) };
@@ -141,6 +164,13 @@ pub fn run() -> anyhow::Result<()> {
     }
     info!("tray ended");
     drop(window);
+    // The new tray needs the tray lock.
+    drop(lock);
+    if TRAY.with(|t| t.restart.get()) {
+        let exe = paths::installed_exe()?;
+        info!("starting the updated tray {}", exe.display());
+        process::spawn_detached(&exe, &["tray"])?;
+    }
     Ok(())
 }
 
@@ -154,7 +184,7 @@ fn bail_remove(hwnd: HWND) -> anyhow::Result<()> {
 
 /// The small icon from the exe resources (ID 1).
 fn load_icon() -> HICON {
-    // SAFETY: NULL gives the handle of the exe; ID 1 is in res/widepeek.rc.
+    // SAFETY: NULL gives the handle of the exe; ID 1 is in the resource script from build.rs.
     unsafe {
         let Ok(module) = GetModuleHandleW(PCWSTR::null()) else {
             return HICON::default();
@@ -204,6 +234,19 @@ extern "system" fn tray_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARA
             on_timer(hwnd);
             LRESULT(0)
         }
+        WM_TIMER if wparam.0 == updates::TIMER_ID => {
+            if !TRAY.with(|t| t.busy.get()) {
+                updates::start(hwnd, Job::Auto);
+            }
+            LRESULT(0)
+        }
+        updates::WM_TRAY_UPDATE => {
+            if updates::finished(wparam) {
+                TRAY.with(|t| t.restart.set(true));
+                quit(hwnd);
+            }
+            LRESULT(0)
+        }
         WM_TRAY_ICON => {
             let mouse = (lparam.0 & 0xffff) as u32;
             if mouse == WM_RBUTTONUP || mouse == WM_LBUTTONUP {
@@ -230,6 +273,8 @@ extern "system" fn tray_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARA
         WM_DESTROY => {
             // SAFETY: the timer and the icon belong to this window.
             let _ = unsafe { KillTimer(Some(hwnd), TIMER_ID) };
+            // SAFETY: as above.
+            let _ = unsafe { KillTimer(Some(hwnd), updates::TIMER_ID) };
             let _ = notify(hwnd, NIM_DELETE);
             // SAFETY: ends the message loop of this thread.
             unsafe { PostQuitMessage(0) };
@@ -372,6 +417,13 @@ fn wait_for_exit(pid: u32) {
 fn show_menu(hwnd: HWND) {
     let status = TRAY.with(|t| t.status.get());
     let error = LAST_ERROR.with(|e| e.borrow().clone());
+    let pending =
+        updates::pending_version().map(|v| HSTRING::from(format!("Install widepeek {v}")));
+    let update_flags = if updates::is_running() {
+        MF_STRING | MF_GRAYED
+    } else {
+        MF_STRING
+    };
     let label = HSTRING::from(match &error {
         Some(error) => format!("Error: {error}"),
         None => status.text().to_owned(),
@@ -385,6 +437,15 @@ fn show_menu(hwnd: HWND) {
         let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, &label);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, CMD_RESTORE, w!("Restore now"));
+        if let Some(pending) = &pending {
+            let _ = AppendMenuW(menu, update_flags, CMD_INSTALL_UPDATE, pending);
+        }
+        let _ = AppendMenuW(
+            menu,
+            update_flags,
+            CMD_CHECK_UPDATE,
+            w!("Check for updates"),
+        );
         let _ = AppendMenuW(menu, MF_STRING, CMD_QUIT, w!("Quit"));
         let mut point = POINT::default();
         let _ = GetCursorPos(&mut point);
@@ -404,6 +465,8 @@ fn show_menu(hwnd: HWND) {
         match command.0 as usize {
             CMD_RESTORE => restore_now(hwnd),
             CMD_QUIT => quit(hwnd),
+            CMD_CHECK_UPDATE => updates::start(hwnd, Job::Manual),
+            CMD_INSTALL_UPDATE => updates::start(hwnd, Job::Install),
             _ => {}
         }
     }

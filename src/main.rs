@@ -29,6 +29,7 @@ mod system;
 mod tray;
 mod ui;
 mod uninstall;
+mod update;
 mod wide;
 mod window;
 
@@ -77,6 +78,12 @@ fn run(command: &Command) -> anyhow::Result<()> {
         Command::Uninstall { yes } => uninstall::run(*yes),
         Command::InstallSystem { user_sid } => system::install_here(user_sid).map(drop),
         Command::UninstallSystem => system::uninstall_here(),
+        Command::Update => update::command(),
+        Command::InstallUpdate {
+            path,
+            version,
+            user_sid,
+        } => update::apply_here(path, version, user_sid),
         Command::Help => {
             console::println(cli::USAGE);
             Ok(())

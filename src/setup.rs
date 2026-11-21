@@ -62,6 +62,15 @@ fn wizard(args: &SetupArgs) -> anyhow::Result<()> {
     } else {
         previous.as_ref().is_some_and(|c| c.tray_autostart)
     };
+    let check_updates = if interactive {
+        console::confirm(
+            "\nCheck GitHub for a new widepeek version once per day? widepeek asks before \
+             it installs an update. GitHub sees your IP address, like for any web page.",
+            previous.as_ref().is_some_and(|c| c.check_updates),
+        )?
+    } else {
+        previous.as_ref().is_some_and(|c| c.check_updates)
+    };
 
     let config = Config {
         display_name: screen.name.clone(),
@@ -78,6 +87,7 @@ fn wizard(args: &SetupArgs) -> anyhow::Result<()> {
             .as_ref()
             .map_or(config::DEFAULT_START_TIMEOUT_SECS, |c| c.start_timeout_secs),
         tray_autostart,
+        check_updates,
     };
     console::println(
         "

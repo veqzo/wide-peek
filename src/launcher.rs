@@ -10,15 +10,29 @@ use windows::Win32::System::Console::{
 };
 use windows::core::BOOL;
 
+use crate::config::{self, Config};
 use crate::process;
 use crate::session::{self, StretchSession};
 use crate::window::{self, HiddenWindow};
-use crate::{config, console, instance, riot};
+use crate::{console, instance, riot, ui, update};
 
 const START_POLL: Duration = Duration::from_secs(1);
 const EXIT_POLL: Duration = Duration::from_secs(5);
 
 pub fn run() -> anyhow::Result<()> {
+    let config = launch()?;
+    // The display is native again and the launch lock is free, so the
+    // update can hold it. Never before the game: the user wants to play.
+    if let Some(release) = update::check_if_due(config.check_updates)
+        && let Err(err) = update::offer(&release)
+    {
+        error!("update to {} failed: {err:#}", release.version);
+        ui::error(&format!("The update failed: {err:#}"));
+    }
+    Ok(())
+}
+
+fn launch() -> anyhow::Result<Config> {
     let _lock = instance::try_acquire(instance::LAUNCH)?.context("widepeek is already running")?;
     let config = config::load_required()?;
     if process::find(riot::GAME_PROCESS).is_some() {
@@ -42,7 +56,8 @@ pub fn run() -> anyhow::Result<()> {
     info!("{} started (pid {pid})", riot::GAME_PROCESS);
     wait_for_exit(pid)?;
     info!("{} ended", riot::GAME_PROCESS);
-    session.finish()
+    session.finish()?;
+    Ok(config)
 }
 
 /// Polls for the game process once per second and keeps the window alive.

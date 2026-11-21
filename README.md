@@ -51,6 +51,8 @@ for you, and it never leaves your PC in a broken state.
   no injection. See [Safety](#safety-and-anti-cheat).
 - 🪶 **Tiny.** One static exe, about 1.5 MB of memory, close to zero CPU.
 - 🖥️ **Multi-monitor aware.** All displays get their modes back after the game.
+- 🔄 **Updates in the app.** Optional daily check. widepeek asks, then installs
+  the new release with one UAC prompt. See [Updates](#updates).
 
 ## Quick start
 
@@ -114,6 +116,7 @@ higher than the native refresh rate.
   you see one UAC prompt.
 - Creates the shortcut **Valorant (widepeek)** on the desktop and in the Start
   menu.
+- Asks if widepeek may check for updates once per day. The default is *No*.
 
 ## How it works
 
@@ -158,9 +161,11 @@ elevated, through the scheduled tasks.
 | `widepeek tray` | Stay in the tray, stretch when `VALORANT.exe` starts (optional) |
 | `widepeek setup` | One-time setup. Options: `--width`, `--height`, `--hz`, `--display`, `--yes` |
 | `widepeek restore` | Restore the native mode and enable the monitors. Safe at any time |
+| `widepeek update` | Check for a new version now and offer to install it |
 | `widepeek uninstall` | Restore, then remove tasks, shortcuts, autostart, files and config |
 
-`monitor-off` and `monitor-on` are internal. The scheduled tasks call them.
+`monitor-off`, `monitor-on`, `install-system`, `uninstall-system` and
+`install-update` are internal.
 
 > [!NOTE]
 > `widepeek.exe` is a GUI subsystem program, so `cmd` does not wait for it.
@@ -172,7 +177,7 @@ elevated, through the scheduled tasks.
 
 `widepeek tray` stays in the notification area. It checks the process list
 every 2 s and stretches when `VALORANT.exe` starts. The menu has a status line,
-*Restore now* and *Quit*. Setup can add it to the autostart (unelevated,
+*Restore now*, *Check for updates* and *Quit*. Setup can add it to the autostart (unelevated,
 `HKCU\...\Run`).
 
 The launcher is the recommended way. The tray stretches only after
@@ -199,6 +204,50 @@ start in the stretched mode for about 5 seconds until `RestoreAtLogon` runs.
 enables all disabled monitor devices and sets each display to its best mode.
 Only one session runs at a time (named mutexes).
 
+## Updates
+
+widepeek can find and install a new release itself, so you do not have to
+check GitHub.
+
+- **Automatic check (opt-in).** Setup asks once. If you say *Yes*, widepeek
+  checks at most once per day: the launcher after the game ended, the tray in
+  the background. To change it, run `widepeek setup` again or set
+  `check_updates` in the config.
+- **Manual check.** `widepeek update`, or *Check for updates* in the tray menu.
+  This works also when the automatic check is off.
+- **Install.** widepeek shows the new version and the link to the release
+  notes. On *Yes* it downloads the exe, then you confirm one UAC prompt.
+
+The check reads `releases/latest` of this repository from the GitHub API over
+HTTPS. It sends no data about you or your PC. Like for any web page, GitHub
+sees your IP address. widepeek never updates while Valorant or a stretch
+session runs.
+
+<details>
+<summary><b>What widepeek checks before it installs</b></summary>
+
+1. The release is not a draft or a pre-release, and its version is higher
+   than the installed version.
+2. The download URLs point to this repository on GitHub. All requests and
+   redirects go only to GitHub hosts over HTTPS. The exe has at most 20 MB.
+3. The SHA-256 of the exe matches `widepeek.exe.sha256` of the release.
+4. If the installed exe is signed, the new exe must have a valid signature
+   with the same certificate subject. An unsigned exe cannot replace a signed
+   one. The SignPath Foundation certificate signs many open-source projects,
+   so this check only adds to the SHA-256 check.
+5. The elevated step runs the **installed** exe from
+   `C:\Program Files\widepeek`, not the download. It gets only the path, the
+   version and your account from the unelevated caller. It refuses a version
+   that is not newer than the installed one, so no downgrade is possible. It
+   reads the release and its SHA-256 file from GitHub itself.
+6. The elevated step reads the download once from your local disk and writes
+   it to a staging file in `C:\Program Files\widepeek`. It checks the hash,
+   the exe header and the signature of that copy. Then it swaps the files.
+   If the swap fails, the old exe comes back. Then the new exe updates the
+   scheduled tasks.
+
+</details>
+
 ## Safety and anti-cheat
 
 > [!IMPORTANT]
@@ -220,6 +269,10 @@ Only one session runs at a time (named mutexes).
 - Setup copies the running image, not the file at its path, so a file that
   another process puts at that path during setup is not installed.
 - The administrator prompt must use the same Windows account as the wizard.
+- An update is installed only after the checks in [Updates](#updates). The
+  elevated update step takes only a path, a version and an account SID from
+  the unelevated caller. It gets the expected SHA-256 from GitHub itself and
+  checks a copy in the program folder, not the file in your profile.
 - The exe links the C runtime statically and loads DLLs only from `System32`,
   so a planted DLL next to the download is not loaded.
 
@@ -266,6 +319,8 @@ process and adds a dependency. Toolhelp gives the same result with fewer parts.
 | `%AppData%\widepeek\config.toml` | Configuration |
 | `%LocalAppData%\widepeek\widepeek.log` | Log (rotates at about 1 MB) |
 | `%LocalAppData%\widepeek\state.json` | Only while a session runs |
+| `%LocalAppData%\widepeek\update.json` | Time of the last update check |
+| `%LocalAppData%\widepeek\update\` | Only while an update installs |
 
 The config has a `riot_client_path` option. If it is set and the file exists,
 widepeek uses it. Otherwise it reads `RiotClientInstalls.json`, then it uses

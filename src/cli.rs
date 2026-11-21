@@ -1,6 +1,11 @@
 //! Minimal command line parser. No external crate keeps the binary small.
 
+use std::path::{Path, PathBuf};
+
 use anyhow::{Context, bail};
+
+pub use crate::update::INSTALL_UPDATE;
+use crate::update::Version;
 
 pub const USAGE: &str = r"widepeek - Valorant in true stretched resolution
 
@@ -12,6 +17,7 @@ COMMANDS:
     tray         Run in the tray and stretch when Valorant starts
     setup        One-time setup (asks for administrator rights)
     restore      Restore the native resolution and enable the monitor
+    update       Check for a new version and install it
     uninstall    Restore, then remove tasks, shortcuts, files and configuration
     help         Show this text
     version      Show the version
@@ -43,11 +49,23 @@ pub enum Command {
     Launch,
     Tray,
     Setup(SetupArgs),
-    Restore { at_logon: bool },
+    Restore {
+        at_logon: bool,
+    },
     MonitorOff,
     MonitorOn,
-    Uninstall { yes: bool },
-    InstallSystem { user_sid: String },
+    Uninstall {
+        yes: bool,
+    },
+    Update,
+    InstallSystem {
+        user_sid: String,
+    },
+    InstallUpdate {
+        path: PathBuf,
+        version: String,
+        user_sid: String,
+    },
     UninstallSystem,
     Help,
     Version,
@@ -63,6 +81,8 @@ impl Command {
             Self::MonitorOff => "monitor-off",
             Self::MonitorOn => "monitor-on",
             Self::Uninstall { .. } => "uninstall",
+            Self::Update => "update",
+            Self::InstallUpdate { .. } => INSTALL_UPDATE,
             Self::InstallSystem { .. } => INSTALL_SYSTEM,
             Self::UninstallSystem => UNINSTALL_SYSTEM,
             Self::Help => "help",
@@ -85,6 +105,7 @@ impl Command {
             Self::MonitorOff
                 | Self::MonitorOn
                 | Self::InstallSystem { .. }
+                | Self::InstallUpdate { .. }
                 | Self::UninstallSystem
                 | Self::Help
                 | Self::Version
@@ -100,7 +121,9 @@ impl Command {
                 | Self::Setup(_)
                 | Self::Restore { at_logon: false }
                 | Self::Uninstall { .. }
+                | Self::Update
                 | Self::InstallSystem { .. }
+                | Self::InstallUpdate { .. }
                 | Self::UninstallSystem
         )
     }
@@ -135,7 +158,9 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> anyhow::Result<Command>
                 user_sid: sid.clone(),
             });
         }
+        INSTALL_UPDATE => return parse_install_update(&rest),
         UNINSTALL_SYSTEM => Command::UninstallSystem,
+        "update" => Command::Update,
         "monitor-off" => Command::MonitorOff,
         "monitor-on" => Command::MonitorOn,
         "uninstall" => {
@@ -181,6 +206,30 @@ fn parse_setup(args: &[String]) -> anyhow::Result<SetupArgs> {
         }
     }
     Ok(setup)
+}
+
+/// `install-update <exe> <version> <sid>`: an absolute `.exe` path on a
+/// drive (no UNC or device path), a version `X.Y.Z` and a user SID.
+fn parse_install_update(args: &[String]) -> anyhow::Result<Command> {
+    let [path_arg, version, sid] = args else {
+        bail!("{INSTALL_UPDATE} needs an exe, a version and a user SID");
+    };
+    let path = Path::new(path_arg);
+    let is_exe = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("exe"));
+    if !path.is_absolute() || path_arg.starts_with(r"\\") || !is_exe {
+        bail!("`{}` is not an absolute path to an exe", path.display());
+    }
+    Version::parse(version)?;
+    if !is_sid(sid) {
+        bail!("`{sid}` is not a user SID");
+    }
+    Ok(Command::InstallUpdate {
+        path: path.to_path_buf(),
+        version: version.clone(),
+        user_sid: sid.clone(),
+    })
 }
 
 /// A string SID like `S-1-5-21-...`: only digits and dashes, so it is safe in
@@ -260,6 +309,31 @@ mod tests {
         assert!(p(&["install-system", "S-1-5-21-1<x>"]).is_err());
         assert!(p(&["install-system", "S-1-"]).is_err());
         assert!(p(&["install-system", "S-1-5--1"]).is_err());
+    }
+
+    #[test]
+    fn parses_update_commands() {
+        assert_eq!(p(&["update"]).unwrap(), Command::Update);
+        assert!(p(&["update", "now"]).is_err());
+        let version = "1.0.0";
+        let sid = "S-1-5-21-100-200-300-1001";
+        let exe = r"C:\x\widepeek-1.0.0.exe";
+        assert_eq!(
+            p(&["install-update", exe, version, sid]).unwrap(),
+            Command::InstallUpdate {
+                path: PathBuf::from(exe),
+                version: version.to_owned(),
+                user_sid: sid.to_owned(),
+            }
+        );
+        let unc = r"\\server\share\widepeek.exe";
+        assert!(p(&["install-update", "widepeek.exe", version, sid]).is_err());
+        assert!(p(&["install-update", unc, version, sid]).is_err());
+        assert!(p(&["install-update", r"\\?\C:\x\w.exe", version, sid]).is_err());
+        assert!(p(&["install-update", r"C:\x\widepeek.dll", version, sid]).is_err());
+        assert!(p(&["install-update", exe, "1.0", sid]).is_err());
+        assert!(p(&["install-update", exe, version, "S-1-"]).is_err());
+        assert!(p(&["install-update", exe, version]).is_err());
     }
 
     #[test]

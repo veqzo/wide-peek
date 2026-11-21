@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 description = "Launches Valorant in true stretched resolution and always restores the display afterwards"
 license = "MIT"
+repository = "https://github.com/veqzo/wide-peek"
 publish = false
 build = "build.rs"
 
@@ -21,8 +22,13 @@ features = [
     "Win32_Devices_Display",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Networking_WinHttp",
     "Win32_Security",
     "Win32_Security_Authorization",
+    "Win32_Security_Cryptography",
+    "Win32_Security_Cryptography_Catalog",
+    "Win32_Security_Cryptography_Sip",
+    "Win32_Security_WinTrust",
     "Win32_Storage_FileSystem",
     "Win32_System_Com",
     "Win32_System_Console",

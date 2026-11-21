@@ -32,6 +32,10 @@ pub struct Config {
     pub start_timeout_secs: u64,
     #[serde(default)]
     pub tray_autostart: bool,
+    /// Checks GitHub for a new release at most once per day. Off by default:
+    /// widepeek sends nothing over the network unless the user turns it on.
+    #[serde(default)]
+    pub check_updates: bool,
 }
 
 fn default_true() -> bool {
@@ -156,6 +160,7 @@ pub fn sample() -> Config {
         riot_client_path: None,
         start_timeout_secs: DEFAULT_START_TIMEOUT_SECS,
         tray_autostart: false,
+        check_updates: false,
     }
 }
 
@@ -184,6 +189,20 @@ mod tests {
         let config = Config::from_toml(&reduced).unwrap();
         assert!(config.toggle_monitor);
         assert_eq!(config.start_timeout_secs, DEFAULT_START_TIMEOUT_SECS);
+    }
+
+    #[test]
+    fn update_checks_are_off_in_old_configs() {
+        let mut config = sample();
+        config.check_updates = true;
+        let text: String = config
+            .to_toml()
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("check_updates"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert!(!Config::from_toml(&text).unwrap().check_updates);
     }
 
     #[test]
