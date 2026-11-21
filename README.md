@@ -289,6 +289,23 @@ cargo build --release
 The exe is at `target\release\widepeek.exe`. CI builds, lints and tests every
 push and attaches the exe to tagged releases.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [veqzo](https://github.com/veqzo)
+- Approvers: [veqzo](https://github.com/veqzo)
+
+Only the release exe that CI builds from a tag in this repository is signed.
+Each signing request needs a manual approval. The signed exe shows
+*SignPath Foundation* as the publisher. Maintainer steps are in
+[docs/SIGNING.md](docs/SIGNING.md).
+
+**Privacy:** This program will not transfer any information to other networked
+systems unless specifically requested by the user or the person installing or
+operating it.
+
 ## Disclaimer
 
 widepeek is not made by, endorsed by or associated with Riot Games. Valorant

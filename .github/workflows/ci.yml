@@ -20,12 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Third-party actions are pinned to commits: they run in the job that
+      # builds the exe that gets signed. Dependabot updates the pins.
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           targets: ${{ env.TARGET }}
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Format
         run: cargo fmt --all --check
@@ -39,27 +42,121 @@ jobs:
       - name: Build release
         run: cargo build --release --target ${{ env.TARGET }} --locked
 
-      - uses: actions/upload-artifact@v4
+      - name: Check that the tag matches the crate version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "tag $env:GITHUB_REF_NAME does not match the crate version $version"
+          }
+
+      - name: Upload unsigned exe
+        id: upload
+        uses: actions/upload-artifact@v4
         with:
           name: widepeek-${{ env.TARGET }}
           path: target/${{ env.TARGET }}/release/widepeek.exe
           if-no-files-found: error
 
-  release:
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+
+  # Signs the exe when the repo variable SIGNPATH_ENABLED is 'true'. Otherwise
+  # it passes the unsigned exe on. The job has no write access to the repo.
+  sign:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    # The SignPath token is a secret of this environment. Its deployment
+    # rule allows only v* tags (see docs/SIGNING.md).
+    environment: release
+    timeout-minutes: 75
+    concurrency:
+      group: release-${{ github.ref }}
+    permissions:
+      contents: read
+      # SignPath reads the unsigned artifact through the GitHub token.
+      actions: read
+    env:
+      SIGNING_ENABLED: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+      HAS_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    steps:
+      - name: Check the signing setup
+        if: env.SIGNING_ENABLED == 'true' && env.HAS_TOKEN != 'true'
+        run: |
+          echo "::error::SIGNPATH_ENABLED is true, but the secret SIGNPATH_API_TOKEN is missing"
+          exit 1
+
+      # The build job checked that the tag is "v" + the crate version.
+      - name: Read the version from the tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign with SignPath
+        if: env.SIGNING_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'widepeek' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ needs.build.outputs.artifact-id }}
+          wait-for-completion: true
+          # Each release needs a manual approval in SignPath.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: dist
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+
+      - name: Check the signature
+        if: env.SIGNING_ENABLED == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osslsigncode
+          osslsigncode verify -in dist/widepeek.exe
+
+      - name: Download unsigned exe
+        if: env.SIGNING_ENABLED != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: widepeek-${{ env.TARGET }}
+          path: dist
+
+      - name: Upload release exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: widepeek-release
+          path: dist/widepeek.exe
+          if-no-files-found: error
+
+    outputs:
+      signed: ${{ env.SIGNING_ENABLED }}
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: widepeek-${{ env.TARGET }}
+          name: widepeek-release
+          path: dist
 
       - name: Publish release
+        working-directory: dist
         env:
           GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ needs.sign.outputs.signed }}
         run: |
           sha256sum widepeek.exe > widepeek.exe.sha256
+          if [ "$SIGNED" = "true" ]; then
+            notes="Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)."
+          else
+            notes="This exe is not signed."
+          fi
           gh release create "$GITHUB_REF_NAME" widepeek.exe widepeek.exe.sha256 \
-            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+            --repo "$GITHUB_REPOSITORY" --title "widepeek $GITHUB_REF_NAME" \
+            --notes "$notes" --generate-notes
