@@ -22,8 +22,8 @@ use windows::Win32::Graphics::Gdi::{
     DISP_CHANGE_FAILED, DISP_CHANGE_NOTUPDATED, DISP_CHANGE_RESTART, DISP_CHANGE_SUCCESSFUL,
     DISPLAY_DEVICE_ATTACHED_TO_DESKTOP, DISPLAY_DEVICE_PRIMARY_DEVICE, DISPLAY_DEVICEW,
     DM_BITSPERPEL, DM_DISPLAYFIXEDOUTPUT, DM_DISPLAYFREQUENCY, DM_INTERLACED, DM_PELSHEIGHT,
-    DM_PELSWIDTH, DMDFO_STRETCH, ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_MODE,
-    EnumDisplayDevicesW, EnumDisplaySettingsW,
+    DM_PELSWIDTH, DMDFO_STRETCH, EDS_RAWMODE, ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_FLAGS,
+    ENUM_DISPLAY_SETTINGS_MODE, EnumDisplayDevicesW, EnumDisplaySettingsExW,
 };
 use windows::core::PCWSTR;
 
@@ -88,37 +88,62 @@ fn is_interlaced(dm: &DEVMODEW) -> bool {
     flags & DM_INTERLACED.0 != 0
 }
 
-fn enum_settings(device: &[u16], index: ENUM_DISPLAY_SETTINGS_MODE) -> Option<DEVMODEW> {
+/// Which modes Windows lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModeFilter {
+    /// Only the modes that the monitor reports (EDID).
+    Monitor,
+    /// All modes of the driver, also custom resolutions outside the EDID.
+    /// Windows hides those while the monitor device is enabled.
+    Driver,
+}
+
+fn enum_settings(
+    device: &[u16],
+    index: ENUM_DISPLAY_SETTINGS_MODE,
+    filter: ModeFilter,
+) -> Option<DEVMODEW> {
+    let flags = match filter {
+        ModeFilter::Monitor => ENUM_DISPLAY_SETTINGS_FLAGS(0),
+        ModeFilter::Driver => EDS_RAWMODE,
+    };
     let mut dm = empty_devmode();
     // SAFETY: `device` is NUL-terminated and `dm` has a correct dmSize.
-    let ok = unsafe { EnumDisplaySettingsW(PCWSTR(device.as_ptr()), index, &mut dm) };
+    let ok = unsafe { EnumDisplaySettingsExW(PCWSTR(device.as_ptr()), index, &mut dm, flags) };
     ok.as_bool().then_some(dm)
 }
 
-fn all_devmodes(device: &str) -> Vec<DEVMODEW> {
+fn all_devmodes(device: &str, filter: ModeFilter) -> Vec<DEVMODEW> {
     let device = to_wide(device);
     (0..)
-        .map_while(|i| enum_settings(&device, ENUM_DISPLAY_SETTINGS_MODE(i)))
+        .map_while(|i| enum_settings(&device, ENUM_DISPLAY_SETTINGS_MODE(i), filter))
         .filter(|dm| !is_interlaced(dm))
         .collect()
 }
 
 pub fn current_mode(device: &str) -> anyhow::Result<DisplayMode> {
-    enum_settings(&to_wide(device), ENUM_CURRENT_SETTINGS)
+    enum_settings(&to_wide(device), ENUM_CURRENT_SETTINGS, ModeFilter::Monitor)
         .map(|dm| mode_of(&dm))
         .with_context(|| format!("cannot read the current mode of {device}"))
 }
 
-/// All progressive modes of a display, sorted and without duplicates.
+/// All progressive modes that the monitor reports, sorted and without
+/// duplicates.
 pub fn list_modes(device: &str) -> Vec<DisplayMode> {
-    let mut modes: Vec<DisplayMode> = all_devmodes(device).iter().map(mode_of).collect();
+    sorted_modes(device, ModeFilter::Monitor)
+}
+
+fn sorted_modes(device: &str, filter: ModeFilter) -> Vec<DisplayMode> {
+    let mut modes: Vec<DisplayMode> = all_devmodes(device, filter).iter().map(mode_of).collect();
     modes.sort_by_key(|m| (m.width, m.height, m.hz, m.bpp));
     modes.dedup();
     modes
 }
 
+/// True if the driver offers `mode`. A custom resolution outside the EDID
+/// counts, although Windows only lists it while the monitor device is off.
 pub fn mode_exists(device: &str, mode: DisplayMode) -> bool {
-    list_modes(device).contains(&mode)
+    sorted_modes(device, ModeFilter::Driver).contains(&mode)
 }
 
 /// The mode with the most pixels, then the highest refresh rate, then the
@@ -168,8 +193,16 @@ fn check(code: DISP_CHANGE, what: &str, mode: DisplayMode) -> anyhow::Result<()>
 ///
 /// With `stretch`, widepeek first asks Windows for stretched scaling
 /// (`DMDFO_STRETCH`). If the driver rejects that, it uses the mode without it.
+/// The stretched mode comes from all driver modes, because a custom
+/// resolution outside the EDID is not in the monitor list. `CDS_TEST` still
+/// checks it before the change.
 pub fn apply_mode(device: &str, mode: DisplayMode, stretch: bool) -> anyhow::Result<()> {
-    let mut dm = all_devmodes(device)
+    let filter = if stretch {
+        ModeFilter::Driver
+    } else {
+        ModeFilter::Monitor
+    };
+    let mut dm = all_devmodes(device, filter)
         .into_iter()
         .find(|dm| mode_of(dm) == mode)
         .with_context(|| format!("{device} does not offer the mode {mode}"))?;
