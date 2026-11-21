@@ -57,6 +57,11 @@ for you, and it never leaves your PC in a broken state.
 ## Quick start
 
 1. **Download** `widepeek.exe` from the [releases](../../releases).
+   The releases are not signed yet (see
+   [Code signing policy](#code-signing-policy)). Windows SmartScreen can show
+   a warning. Compare the output of `(Get-FileHash .\widepeek.exe).Hash` with
+   `widepeek.exe.sha256` of the release, then click *More info* >
+   *Run anyway*.
 2. **Run setup** once and follow the wizard:
 
    ```powershell
@@ -345,6 +350,10 @@ The exe is at `target\release\widepeek.exe`. CI builds, lints and tests every
 push and attaches the exe to tagged releases.
 
 ## Code signing policy
+
+> **Status:** The application to the SignPath Foundation is waiting for
+> approval. Until then, all releases are unsigned. The first release after
+> the approval is the first signed one.
 
 Free code signing provided by [SignPath.io](https://about.signpath.io),
 certificate by [SignPath Foundation](https://signpath.org).
