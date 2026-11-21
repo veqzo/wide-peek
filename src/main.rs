@@ -91,6 +91,10 @@ fn run(command: &Command) -> anyhow::Result<()> {
 /// Shows the error where the user can see it: the console if there is one,
 /// otherwise a message box for the interactive modes. Task modes only log.
 fn report_error(command: &Command, err: &anyhow::Error) {
+    // Setup shows its error itself, before it waits for Enter.
+    if matches!(command, Command::Setup(_)) {
+        return;
+    }
     if console::has_console() {
         console::eprintln(&format!("error: {err:#}"));
     } else if command.is_interactive() {

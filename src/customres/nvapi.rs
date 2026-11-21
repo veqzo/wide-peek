@@ -26,7 +26,13 @@ const ID_SAVE_CUSTOM_DISPLAY: u32 = 0x4988_2876;
 const ID_REVERT_CUSTOM_DISPLAY_TRIAL: u32 = 0xcbbd_40f0;
 
 const NVAPI_OK: i32 = 0;
+const NVAPI_ERROR: i32 = -1;
 const NVAPI_END_ENUMERATION: i32 = -7;
+
+/// `NV_FORMAT`. Some drivers reject `NV_FORMAT_UNKNOWN` with the generic
+/// `NVAPI_ERROR` and only accept an explicit format.
+const FORMAT_UNKNOWN: i32 = 0;
+const FORMAT_A8R8G8B8: i32 = 21;
 
 /// `NV_TIMING_OVERRIDE`
 const TIMING_CURRENT: i32 = 0;
@@ -287,6 +293,35 @@ fn check_timing(
     Ok(())
 }
 
+/// The color formats to try, the most widely accepted first.
+fn color_formats(bpp: u32) -> &'static [i32] {
+    if bpp == 32 {
+        &[FORMAT_A8R8G8B8, FORMAT_UNKNOWN]
+    } else {
+        &[FORMAT_UNKNOWN]
+    }
+}
+
+fn custom_display(mode: DisplayMode, color_format: i32, timing: NvTiming) -> NvCustomDisplay {
+    NvCustomDisplay {
+        version: version_1::<NvCustomDisplay>(),
+        width: mode.width,
+        height: mode.height,
+        depth: mode.bpp,
+        color_format,
+        src_partition: NvViewportF {
+            x: 0.0,
+            y: 0.0,
+            w: 1.0,
+            h: 1.0,
+        },
+        x_ratio: 1.0,
+        y_ratio: 1.0,
+        timing,
+        hw_mode_set_only: 0,
+    }
+}
+
 impl CustomResBackend for Nvidia {
     fn name(&self) -> &'static str {
         "NVIDIA"
@@ -320,23 +355,6 @@ impl CustomResBackend for Nvidia {
         confirm: &mut dyn FnMut() -> bool,
     ) -> anyhow::Result<()> {
         let timing = self.safe_timing(native, mode)?;
-        let custom = NvCustomDisplay {
-            version: version_1::<NvCustomDisplay>(),
-            width: mode.width,
-            height: mode.height,
-            depth: mode.bpp,
-            color_format: 0,
-            src_partition: NvViewportF {
-                x: 0.0,
-                y: 0.0,
-                w: 1.0,
-                h: 1.0,
-            },
-            x_ratio: 1.0,
-            y_ratio: 1.0,
-            timing,
-            hw_mode_set_only: 0,
-        };
         let ids = [self.display_id];
         let try_custom: FnTryCustom = self.function(ID_TRY_CUSTOM_DISPLAY)?;
         let save: FnSaveCustom = self.function(ID_SAVE_CUSTOM_DISPLAY)?;
@@ -347,11 +365,28 @@ impl CustomResBackend for Nvidia {
             timing.h_total,
             timing.v_total
         );
-        // SAFETY: one display id and one custom display of the right version.
-        self.check(
-            unsafe { try_custom(ids.as_ptr(), 1, &custom) },
-            "NvAPI_DISP_TryCustomDisplay",
-        )?;
+        let mut status = NVAPI_ERROR;
+        for &format in color_formats(mode.bpp) {
+            let custom = custom_display(mode, format, timing);
+            // SAFETY: one display id and one custom display of the right version.
+            status = unsafe { try_custom(ids.as_ptr(), 1, &custom) };
+            if status != NVAPI_ERROR {
+                break;
+            }
+            warn!("NvAPI_DISP_TryCustomDisplay with color format {format} failed with NVAPI_ERROR");
+        }
+        if status == NVAPI_ERROR {
+            bail!(
+                "the NVIDIA driver rejected {mode} (NVAPI_ERROR). Create it once by hand: \
+                 NVIDIA Control Panel > Display > Change resolution > Customize > Create \
+                 Custom Resolution: {} x {}, {} Hz, Timing: CVT reduced blank. \
+                 Then run `widepeek setup` again.",
+                mode.width,
+                mode.height,
+                mode.hz
+            );
+        }
+        self.check(status, "NvAPI_DISP_TryCustomDisplay")?;
         if !confirm() {
             // SAFETY: same display id as the trial.
             let status = unsafe { revert(ids.as_ptr(), 1) };
