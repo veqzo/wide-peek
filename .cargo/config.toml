@@ -1,0 +1,9 @@
+# The elevated setup often runs from the Downloads folder. A static CRT and a
+# System32-only search for the static imports keep planted DLLs next to the
+# exe (for example vcruntime140.dll) out of the elevated process.
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    # LOAD_LIBRARY_SEARCH_SYSTEM32
+    "-C", "link-arg=/DEPENDENTLOADFLAG:0x800",
+]

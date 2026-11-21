@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: x86_64-pc-windows-msvc
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --target ${{ env.TARGET }} --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --target ${{ env.TARGET }} --locked
+
+      - name: Build release
+        run: cargo build --release --target ${{ env.TARGET }} --locked
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: widepeek-${{ env.TARGET }}
+          path: target/${{ env.TARGET }}/release/widepeek.exe
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: widepeek-${{ env.TARGET }}
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum widepeek.exe > widepeek.exe.sha256
+          gh release create "$GITHUB_REF_NAME" widepeek.exe widepeek.exe.sha256 \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
