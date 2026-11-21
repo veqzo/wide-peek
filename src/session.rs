@@ -1,4 +1,4 @@
-//! The stretch session: disable the monitor, set the stretched mode, and
+//! The stretch session: disable all monitor devices, set the stretched mode, and
 //! restore everything when the session ends in any way.
 //!
 //! Restore paths: `finish` (normal end), `Drop` (error and panic unwind),
@@ -14,8 +14,9 @@ use anyhow::{Context, bail};
 
 use crate::config::Config;
 use crate::instance::{self, InstanceLock};
+use crate::monitor::device::DeviceStatus;
 use crate::restore::{self, Target};
-use crate::state::{self, State};
+use crate::state::{self, SavedDisplay, State};
 use crate::{display, monitor};
 
 /// The target of the running session. All restore paths take it under this
@@ -51,9 +52,13 @@ impl StretchSession {
         if current != native {
             warn!("{name} runs {current}, the config says {native}; restore uses {native}");
         }
-        let monitor_id = config
-            .toggle_monitor
-            .then(|| config.monitor_instance_id.clone());
+        // All monitors go off: with one still on, the game opens there.
+        let monitor_ids = if config.toggle_monitor {
+            monitor::monitors_with(&DeviceStatus::Enabled)?
+        } else {
+            Vec::new()
+        };
+        let others = other_displays(name);
 
         // Hold the lock during the changes. A restore from another thread
         // (tray menu, console handler, end of the Windows session) waits and
@@ -62,7 +67,7 @@ impl StretchSession {
         if CLOSED.load(Ordering::SeqCst) {
             bail!("widepeek is closing, no new session");
         }
-        let state = State::new(name.clone(), native, stretch, monitor_id);
+        let state = State::new(name.clone(), native, stretch, monitor_ids, others);
         state::save(&state)?;
         info!("session start: {name} {native} -> {stretch}");
         *active = Some(Target::from_state(&state));
@@ -86,14 +91,28 @@ impl StretchSession {
 }
 
 fn stretch_display(state: &State, name: &str, stretch: display::DisplayMode) -> anyhow::Result<()> {
-    if let Some(id) = &state.monitor_instance_id
-        && monitor::set_enabled(id, false)?
-    {
+    if monitor::set_all(&state.monitor_instance_ids, false)? {
         // The driver rebuilds the mode list after the device change.
         std::thread::sleep(Duration::from_secs(1));
     }
     display::apply_mode_with_retries(name, stretch, true, 5)
         .context("cannot set the stretched mode")
+}
+
+/// The modes of all active displays except `name`. Restore sets them back,
+/// because a disabled monitor device can change the mode of its display.
+fn other_displays(name: &str) -> Vec<SavedDisplay> {
+    display::displays()
+        .into_iter()
+        .filter(|d| !d.name.eq_ignore_ascii_case(name))
+        .filter_map(|d| match display::current_mode(&d.name) {
+            Ok(mode) => Some(SavedDisplay { name: d.name, mode }),
+            Err(err) => {
+                warn!("cannot read the mode of {}: {err:#}", d.name);
+                None
+            }
+        })
+        .collect()
 }
 
 impl Drop for StretchSession {

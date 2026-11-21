@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::display::DisplayMode;
 use crate::paths;
 
-const STATE_VERSION: u32 = 1;
+const STATE_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct State {
@@ -22,8 +22,22 @@ pub struct State {
     pub display_name: String,
     pub native: DisplayMode,
     pub stretch: DisplayMode,
-    /// Set when the session disables this monitor device.
-    pub monitor_instance_id: Option<String>,
+    /// The monitor devices that the session disables.
+    #[serde(default)]
+    pub monitor_instance_ids: Vec<String>,
+    /// The other active displays and their modes at the session start.
+    #[serde(default)]
+    pub other_displays: Vec<SavedDisplay>,
+    /// Version 1 stored one monitor device. Read only.
+    #[serde(default, rename = "monitor_instance_id", skip_serializing)]
+    legacy_monitor_instance_id: Option<String>,
+}
+
+/// A display and the mode that restore sets back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedDisplay {
+    pub name: String,
+    pub mode: DisplayMode,
 }
 
 impl State {
@@ -31,7 +45,8 @@ impl State {
         display_name: String,
         native: DisplayMode,
         stretch: DisplayMode,
-        monitor_instance_id: Option<String>,
+        monitor_instance_ids: Vec<String>,
+        other_displays: Vec<SavedDisplay>,
     ) -> Self {
         let started_at_unix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -43,8 +58,21 @@ impl State {
             display_name,
             native,
             stretch,
-            monitor_instance_id,
+            monitor_instance_ids,
+            other_displays,
+            legacy_monitor_instance_id: None,
         }
+    }
+
+    /// All monitor devices that restore must enable, also from a version 1 file.
+    pub fn monitors(&self) -> Vec<String> {
+        let mut ids = self.monitor_instance_ids.clone();
+        if let Some(id) = &self.legacy_monitor_instance_id
+            && !ids.iter().any(|known| known.eq_ignore_ascii_case(id))
+        {
+            ids.push(id.clone());
+        }
+        ids
     }
 }
 
@@ -106,9 +134,25 @@ mod tests {
             r"\\.\DISPLAY1".to_owned(),
             native,
             stretch,
-            Some("ID".to_owned()),
+            vec!["ID1".to_owned(), "ID2".to_owned()],
+            vec![SavedDisplay {
+                name: r"\\.\DISPLAY2".to_owned(),
+                mode: native,
+            }],
         );
         let json = serde_json::to_vec(&state).unwrap();
         assert_eq!(serde_json::from_slice::<State>(&json).unwrap(), state);
+    }
+
+    #[test]
+    fn reads_version_1() {
+        let json = r#"{"version":1,"pid":1,"started_at_unix":0,
+            "display_name":"\\\\.\\DISPLAY1",
+            "native":{"width":2560,"height":1440,"hz":144,"bpp":32},
+            "stretch":{"width":2088,"height":1440,"hz":144,"bpp":32},
+            "monitor_instance_id":"ID"}"#;
+        let state: State = serde_json::from_str(json).unwrap();
+        assert_eq!(state.monitors(), vec!["ID".to_owned()]);
+        assert!(state.other_displays.is_empty());
     }
 }

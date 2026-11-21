@@ -7,15 +7,18 @@ use anyhow::bail;
 
 use crate::config::{self, Config};
 use crate::display::{self, DisplayMode};
-use crate::monitor::{self, device, device::DeviceStatus};
-use crate::state::{self, State};
+use crate::monitor::{self, device::DeviceStatus};
+use crate::state::{self, SavedDisplay, State};
 
 /// What restore sets back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub display_name: String,
     pub native: DisplayMode,
-    pub monitor_instance_id: Option<String>,
+    /// The monitor devices to enable.
+    pub monitor_instance_ids: Vec<String>,
+    /// The other displays and their modes before the session.
+    pub other_displays: Vec<SavedDisplay>,
 }
 
 impl Target {
@@ -23,19 +26,33 @@ impl Target {
         Self {
             display_name: state.display_name.clone(),
             native: state.native,
-            monitor_instance_id: state.monitor_instance_id.clone(),
+            monitor_instance_ids: state.monitors(),
+            other_displays: state.other_displays.clone(),
         }
     }
 
+    /// Without a state, nobody knows which devices the session disabled, so
+    /// restore enables every disabled monitor device.
     pub fn from_config(config: &Config) -> Self {
+        let monitor_instance_ids = if config.toggle_monitor {
+            disabled_monitors()
+        } else {
+            Vec::new()
+        };
         Self {
             display_name: config.display_name.clone(),
             native: config.native_mode(),
-            monitor_instance_id: config
-                .toggle_monitor
-                .then(|| config.monitor_instance_id.clone()),
+            monitor_instance_ids,
+            other_displays: Vec::new(),
         }
     }
+}
+
+fn disabled_monitors() -> Vec<String> {
+    monitor::monitors_with(&DeviceStatus::Disabled).unwrap_or_else(|err| {
+        warn!("cannot list the monitor devices: {err:#}");
+        Vec::new()
+    })
 }
 
 /// `widepeek restore`. With `at_logon`, it does nothing when the display is
@@ -67,29 +84,26 @@ fn needs_restore(config: Option<&Config>, state: Option<&State>) -> bool {
     let Some(config) = config else {
         return false;
     };
-    let stretched = display::current_mode(&config.display_name)
-        .is_ok_and(|m| m.width == config.stretch_width && m.height == config.stretch_height);
-    let disabled = config.toggle_monitor
-        && device::status(&config.monitor_instance_id) == DeviceStatus::Disabled;
-    stretched || disabled
+    // A session writes the state before it disables a monitor, so disabled
+    // monitors without a state are not from widepeek. Do not touch them.
+    display::current_mode(&config.display_name)
+        .is_ok_and(|m| m.width == config.stretch_width && m.height == config.stretch_height)
 }
 
-/// Enables the monitor first, then sets the native mode. A disabled monitor
-/// limits the modes, so the order matters. Collects all errors.
+/// Enables the monitors first, then sets the native mode and the modes of
+/// the other displays. A disabled monitor limits the modes, so the order
+/// matters. Collects all errors.
 pub fn restore(target: &Target) -> anyhow::Result<()> {
     info!(
-        "restoring {} to {} (monitor: {})",
+        "restoring {} to {} ({} monitor device(s), {} other display(s))",
         target.display_name,
         target.native,
-        target.monitor_instance_id.as_deref().unwrap_or("none")
+        target.monitor_instance_ids.len(),
+        target.other_displays.len()
     );
     let mut errors = Vec::new();
 
-    let enabled = match &target.monitor_instance_id {
-        Some(id) => monitor::set_enabled(id, true),
-        None => Ok(false),
-    };
-    match enabled {
+    match monitor::set_all(&target.monitor_instance_ids, true) {
         Ok(true) => settle(),
         Ok(false) => {}
         Err(err) => errors.push(format!("{err:#}")),
@@ -99,6 +113,18 @@ pub fn restore(target: &Target) -> anyhow::Result<()> {
         && let Err(err) = set_native(&target.display_name, target.native)
     {
         errors.push(format!("{err:#}"));
+    }
+    for other in &target.other_displays {
+        match display::current_mode(&other.name) {
+            Ok(mode) if mode == other.mode => {}
+            Ok(_) => {
+                if let Err(err) = set_native(&other.name, other.mode) {
+                    errors.push(format!("{err:#}"));
+                }
+            }
+            // The display was removed since the session start.
+            Err(err) => warn!("skipping {}: {err:#}", other.name),
+        }
     }
 
     finish(errors)

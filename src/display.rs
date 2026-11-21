@@ -55,8 +55,6 @@ pub struct DisplayInfo {
     /// Monitor name from the EDID, for example `LG ULTRAGEAR`. Can be empty.
     pub monitor_name: String,
     pub primary: bool,
-    /// Device instance ID of the monitor, if Windows reports one.
-    pub monitor_instance_id: Option<String>,
 }
 
 /// Suggested stretched width: `height * 1.45`, rounded to a multiple of 8.
@@ -275,15 +273,13 @@ pub fn displays() -> Vec<DisplayInfo> {
             continue;
         }
         let name = from_wide(&dd.DeviceName);
-        let (monitor_name, path) = targets
+        let monitor_name = targets
             .iter()
-            .find(|(source, _, _)| source.eq_ignore_ascii_case(&name))
-            .map(|(_, friendly, path)| (friendly.clone(), path.clone()))
+            .find(|(source, _)| source.eq_ignore_ascii_case(&name))
+            .map(|(_, friendly)| friendly.clone())
             .unwrap_or_default();
         result.push(DisplayInfo {
             primary: dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE == DISPLAY_DEVICE_PRIMARY_DEVICE,
-            monitor_instance_id: interface_path_to_instance_id(&path)
-                .or_else(|| monitor_interface_of(&name)),
             monitor_name,
             name,
         });
@@ -291,32 +287,9 @@ pub fn displays() -> Vec<DisplayInfo> {
     result
 }
 
-/// Fallback for the monitor ID: the first monitor below the GDI source.
-fn monitor_interface_of(source: &str) -> Option<String> {
-    let source = to_wide(source);
-    let mut dd = DISPLAY_DEVICEW {
-        cb: size_of::<DISPLAY_DEVICEW>() as u32,
-        ..Default::default()
-    };
-    const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 1;
-    // SAFETY: `source` is NUL-terminated and `dd` has a correct size field.
-    let ok = unsafe {
-        EnumDisplayDevicesW(
-            PCWSTR(source.as_ptr()),
-            0,
-            &mut dd,
-            EDD_GET_DEVICE_INTERFACE_NAME,
-        )
-    };
-    if !ok.as_bool() {
-        return None;
-    }
-    interface_path_to_instance_id(&from_wide(&dd.DeviceID))
-}
-
-/// Maps each active GDI source name to the monitor name and the monitor
-/// device interface path, using the display configuration API.
-fn target_names() -> Vec<(String, String, String)> {
+/// Maps each active GDI source name to the monitor name, using the display
+/// configuration API.
+fn target_names() -> Vec<(String, String)> {
     let mut paths: Vec<DISPLAYCONFIG_PATH_INFO> = Vec::new();
     let mut modes: Vec<DISPLAYCONFIG_MODE_INFO> = Vec::new();
     // The configuration can change between the two calls, so retry.
@@ -382,23 +355,10 @@ fn target_names() -> Vec<(String, String, String)> {
                 (
                     from_wide(&source.viewGdiDeviceName),
                     from_wide(&target.monitorFriendlyDeviceName),
-                    from_wide(&target.monitorDevicePath),
                 )
             })
         })
         .collect()
-}
-
-/// Converts a monitor device interface path into a device instance ID:
-/// `\\?\DISPLAY#GSM5B7F#5&2a3b&0&UID4352#{e6f07b5f-...}` gives
-/// `DISPLAY\GSM5B7F\5&2a3b&0&UID4352`.
-pub fn interface_path_to_instance_id(path: &str) -> Option<String> {
-    let rest = path.strip_prefix(r"\\?\")?;
-    let (device, guid) = rest.rsplit_once('#')?;
-    if !guid.starts_with('{') || device.is_empty() {
-        return None;
-    }
-    Some(device.replace('#', "\\"))
 }
 
 #[cfg(test)]
@@ -429,16 +389,5 @@ mod tests {
         ];
         assert_eq!(best_mode(&modes), Some(m(2560, 1440, 144)));
         assert_eq!(best_mode(&[]), None);
-    }
-
-    #[test]
-    fn converts_interface_path() {
-        let path = r"\\?\DISPLAY#GSM5B7F#5&2a3b8f&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}";
-        assert_eq!(
-            interface_path_to_instance_id(path).as_deref(),
-            Some(r"DISPLAY\GSM5B7F\5&2a3b8f&0&UID4352")
-        );
-        assert_eq!(interface_path_to_instance_id(""), None);
-        assert_eq!(interface_path_to_instance_id(r"\\?\DISPLAY#GSM5B7F"), None);
     }
 }

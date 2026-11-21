@@ -1,111 +1,101 @@
 //! Monitor toggle. The device change needs administrator rights, so the
 //! unelevated launcher starts the scheduled tasks `\widepeek\MonitorOff` and
 //! `\widepeek\MonitorOn`. They run `widepeek monitor-off|monitor-on` elevated.
+//!
+//! A session disables every monitor device, not only the one of the stretched
+//! display. With one monitor still enabled, the game opens on that monitor.
 
 pub mod device;
 pub mod tasks;
 
 use anyhow::{Context, bail};
 
-use crate::{config, elevation, state};
+use crate::elevation;
 use device::DeviceStatus;
 
 /// Entry point of the elevated `monitor-off` and `monitor-on` commands.
 ///
-/// These commands do not write the log file: the log directory is writable by
-/// the user, and an elevated process must not write there. The caller checks
-/// the device state and logs the result.
+/// `monitor-off` disables every enabled Monitor-class device, `monitor-on`
+/// enables every disabled one. The commands read no file and do not write the
+/// log: the config, state and log files are writable by the user, and an
+/// elevated process must not trust them. The caller checks the device states
+/// and logs the result.
 pub fn command(enable: bool) -> anyhow::Result<()> {
     if !elevation::is_elevated() {
         bail!("monitor-on and monitor-off need administrator rights");
     }
-    if enable {
-        enable_known_or_all()
+    let from = if enable {
+        DeviceStatus::Disabled
     } else {
-        let config = config::load_required()?;
-        if !config.toggle_monitor {
-            bail!("toggle_monitor is false in the config");
-        }
-        set_direct(&config.monitor_instance_id, false)
-    }
-}
-
-/// Enables the monitors from the config and the state. Without both, it
-/// enables every disabled Monitor-class device.
-fn enable_known_or_all() -> anyhow::Result<()> {
-    let mut ids: Vec<String> = Vec::new();
-    if let Some(config) = config::load_lenient() {
-        ids.push(config.monitor_instance_id);
-    }
-    if let Some(id) = state::load_lenient().and_then(|s| s.monitor_instance_id)
-        && !ids.iter().any(|known| known.eq_ignore_ascii_case(&id))
-    {
-        ids.push(id);
-    }
-    if ids.is_empty() {
-        ids = disabled_monitors()?;
-    }
+        DeviceStatus::Enabled
+    };
     let mut first_error = None;
-    for id in &ids {
-        if let Err(err) = set_direct(id, true) {
+    for id in monitors_with(&from)? {
+        if let Err(err) = device::set_enabled(&id, enable) {
             first_error.get_or_insert(err);
         }
     }
     first_error.map_or(Ok(()), Err)
 }
 
-fn set_direct(instance_id: &str, enable: bool) -> anyhow::Result<()> {
-    match device::status(instance_id) {
-        DeviceStatus::Enabled if enable => Ok(()),
-        DeviceStatus::Disabled if !enable => Ok(()),
-        DeviceStatus::NotFound => bail!("monitor {instance_id} is not present"),
-        _ => device::set_enabled(instance_id, enable),
-    }
-}
-
-/// IDs of all present Monitor-class devices that are disabled.
-pub fn disabled_monitors() -> anyhow::Result<Vec<String>> {
+/// IDs of all present Monitor-class devices with the given state.
+pub fn monitors_with(status: &DeviceStatus) -> anyhow::Result<Vec<String>> {
     Ok(device::list()?
         .into_iter()
-        .filter(|d| d.status == DeviceStatus::Disabled)
+        .filter(|d| &d.status == status)
         .map(|d| d.instance_id)
         .collect())
 }
 
-/// Enables or disables a monitor from any process and checks the result.
+/// Enables or disables monitor devices from any process and checks the result.
 ///
-/// Elevated: direct call. Unelevated: the scheduled task, and if that fails,
-/// an elevated copy of widepeek with a UAC prompt. Returns true if the device
-/// state changed.
-pub fn set_enabled(instance_id: &str, enable: bool) -> anyhow::Result<bool> {
+/// Elevated: direct calls. Unelevated: one run of the scheduled task, and if
+/// that fails, an elevated copy of widepeek with a UAC prompt. Devices that
+/// are not present are skipped with a warning. Returns true if at least one
+/// device state changed.
+pub fn set_all(instance_ids: &[String], enable: bool) -> anyhow::Result<bool> {
     let wanted = if enable {
         DeviceStatus::Enabled
     } else {
         DeviceStatus::Disabled
     };
-    let before = device::status(instance_id);
-    if before == wanted {
+    let action = if enable { "enable" } else { "disable" };
+    let pending: Vec<&String> = instance_ids
+        .iter()
+        .filter(|id| match device::status(id) {
+            DeviceStatus::NotFound => {
+                warn!("monitor {id} is not present, cannot {action} it");
+                false
+            }
+            now => now != wanted,
+        })
+        .collect();
+    if pending.is_empty() {
         return Ok(false);
     }
-    if before == DeviceStatus::NotFound {
-        bail!("monitor {instance_id} is not present");
-    }
-    let action = if enable { "enable" } else { "disable" };
-    info!("{action} monitor {instance_id} (state: {before:?})");
+    info!("{action} {} monitor device(s)", pending.len());
 
     if elevation::is_elevated() {
-        device::set_enabled(instance_id, enable)?;
+        // Try every device, so one error does not leave the others unchanged.
+        let mut first_error = None;
+        for id in &pending {
+            if let Err(err) = device::set_enabled(id, enable) {
+                first_error.get_or_insert(err);
+            }
+        }
+        if let Some(err) = first_error {
+            return Err(err);
+        }
     } else {
         let (task, command) = if enable {
             (tasks::MONITOR_ON, "monitor-on")
         } else {
             (tasks::MONITOR_OFF, "monitor-off")
         };
-        let via_task = tasks::run(task)
-            .and_then(|()| device::wait_for(instance_id, enable, device::VERIFY_TIMEOUT));
+        let via_task = tasks::run(task).and_then(|()| wait_all(&pending, enable));
         if let Err(err) = via_task {
             warn!(
-                "task {task} did not {action} the monitor: {err:#}; asking for administrator rights"
+                "task {task} did not {action} the monitors: {err:#}; asking for administrator rights"
             );
             let exe = elevation::current_exe()?;
             let code = elevation::run_elevated(&exe, &[command.to_owned()])?;
@@ -114,24 +104,20 @@ pub fn set_enabled(instance_id: &str, enable: bool) -> anyhow::Result<bool> {
             }
         }
     }
-    device::wait_for(instance_id, enable, device::VERIFY_TIMEOUT)
-        .with_context(|| format!("cannot {action} monitor {instance_id}"))?;
-    info!("monitor {instance_id} is now {wanted:?}");
+    wait_all(&pending, enable).with_context(|| format!("cannot {action} the monitors"))?;
+    info!("{} monitor device(s) are now {wanted:?}", pending.len());
     Ok(true)
 }
 
-/// Enables every disabled Monitor-class device. Restore uses it when neither
-/// a config nor a state exists.
-pub fn enable_all_disabled() -> anyhow::Result<bool> {
-    let mut changed = false;
-    let mut first_error = None;
-    for id in disabled_monitors()? {
-        match set_enabled(&id, true) {
-            Ok(c) => changed |= c,
-            Err(err) => {
-                first_error.get_or_insert(err);
-            }
-        }
+fn wait_all(instance_ids: &[&String], enable: bool) -> anyhow::Result<()> {
+    for id in instance_ids {
+        device::wait_for(id, enable, device::VERIFY_TIMEOUT)?;
     }
-    first_error.map_or(Ok(changed), Err)
+    Ok(())
+}
+
+/// Enables every disabled Monitor-class device. Restore uses it when no
+/// state tells which devices the session disabled.
+pub fn enable_all_disabled() -> anyhow::Result<bool> {
+    set_all(&monitors_with(&DeviceStatus::Disabled)?, true)
 }

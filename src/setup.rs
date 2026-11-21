@@ -1,6 +1,6 @@
 //! `widepeek setup`: the one-time setup.
 //!
-//! The wizard runs unelevated: display and monitor choice, the stretched
+//! The wizard runs unelevated: display choice, the stretched
 //! mode, the custom resolution, the config, the shortcuts and the optional
 //! tray autostart. Only the copy of the exe to `C:\Program Files\widepeek`
 //! and the scheduled tasks run elevated (see `system`).
@@ -10,7 +10,6 @@ use anyhow::{Context, bail};
 use crate::cli::SetupArgs;
 use crate::config::{self, Config};
 use crate::display::{self, DisplayInfo, DisplayMode};
-use crate::monitor::device::{self, DeviceStatus, MonitorDevice};
 use crate::shortcut::{self, Shortcut};
 use crate::{autostart, console, customres, elevation, instance, restore, riot, state, system};
 
@@ -50,7 +49,6 @@ fn wizard(args: &SetupArgs) -> anyhow::Result<()> {
 
     console::println("widepeek setup\n");
     let screen = pick_display(args.display.as_deref(), interactive)?;
-    let monitor_id = pick_monitor(&screen, interactive)?;
     let native = native_mode(&screen.name)?;
     let stretch = pick_stretch(args, native, interactive)?;
     customres::ensure_mode(&screen.name, native, stretch, interactive)?;
@@ -67,7 +65,6 @@ fn wizard(args: &SetupArgs) -> anyhow::Result<()> {
 
     let config = Config {
         display_name: screen.name.clone(),
-        monitor_instance_id: monitor_id,
         stretch_width: stretch.width,
         stretch_height: stretch.height,
         refresh_hz: stretch.hz,
@@ -139,58 +136,6 @@ fn pick_display(wanted: Option<&str>, interactive: bool) -> anyhow::Result<Displ
     }
     let index = choose("Display", all.len(), Some(default))?;
     Ok(all.swap_remove(index))
-}
-
-/// The Monitor-class device that is disabled while the game runs.
-fn pick_monitor(screen: &DisplayInfo, interactive: bool) -> anyhow::Result<String> {
-    let mut devices = device::list()?;
-    if devices.is_empty() {
-        bail!("Windows reports no monitor device");
-    }
-    let default = screen
-        .monitor_instance_id
-        .as_deref()
-        .and_then(|id| {
-            devices
-                .iter()
-                .position(|d| d.instance_id.eq_ignore_ascii_case(id))
-        })
-        .or((devices.len() == 1).then_some(0));
-    if !interactive || devices.len() == 1 {
-        let index = default.context(
-            "cannot find the monitor device of the display. Run setup without --yes and pick it.",
-        )?;
-        return Ok(devices.swap_remove(index).instance_id);
-    }
-    console::println(&format!(
-        "\nMonitor devices (widepeek disables the one of {} while the game runs):",
-        screen.name
-    ));
-    for (i, d) in devices.iter().enumerate() {
-        let mark = if Some(i) == default {
-            "  <- this display"
-        } else {
-            ""
-        };
-        console::println(&format!(
-            "  {}) {} [{}] {}{mark}",
-            i + 1,
-            d.description,
-            status_text(d),
-            d.instance_id
-        ));
-    }
-    let index = choose("Monitor device", devices.len(), default)?;
-    Ok(devices.swap_remove(index).instance_id)
-}
-
-fn status_text(device: &MonitorDevice) -> String {
-    match device.status {
-        DeviceStatus::Enabled => "enabled".to_owned(),
-        DeviceStatus::Disabled => "disabled".to_owned(),
-        DeviceStatus::Problem(code) => format!("problem {code}"),
-        DeviceStatus::NotFound => "not found".to_owned(),
-    }
 }
 
 /// The current mode is the native mode. A warning shows if the display

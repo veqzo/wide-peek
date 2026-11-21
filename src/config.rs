@@ -14,9 +14,6 @@ pub const DEFAULT_START_TIMEOUT_SECS: u64 = 300;
 pub struct Config {
     /// GDI name of the display, for example `\\.\DISPLAY1`.
     pub display_name: String,
-    /// Device instance ID of the Monitor-class device that is disabled while
-    /// the game runs, for example `DISPLAY\GSM5B7F\5&2a3b&0&UID4352`.
-    pub monitor_instance_id: String,
     pub stretch_width: u32,
     pub stretch_height: u32,
     pub refresh_hz: u32,
@@ -24,6 +21,8 @@ pub struct Config {
     pub native_height: u32,
     pub native_hz: u32,
     pub native_bpp: u32,
+    /// Disables all monitor devices while the game runs (true stretched).
+    /// Older configs also have `monitor_instance_id`; widepeek ignores it.
     #[serde(default = "default_true")]
     pub toggle_monitor: bool,
     /// Overrides the Riot Client path from `RiotClientInstalls.json`.
@@ -87,9 +86,6 @@ impl Config {
         if self.display_name.is_empty() {
             bail!("display_name is empty");
         }
-        if self.toggle_monitor && self.monitor_instance_id.is_empty() {
-            bail!("monitor_instance_id is empty, but toggle_monitor is true");
-        }
         if !(10..=3600).contains(&self.start_timeout_secs) {
             bail!("start_timeout_secs must be between 10 and 3600");
         }
@@ -149,7 +145,6 @@ pub fn save(config: &Config) -> anyhow::Result<()> {
 pub fn sample() -> Config {
     Config {
         display_name: r"\\.\DISPLAY1".to_owned(),
-        monitor_instance_id: r"DISPLAY\GSM5B7F\5&2a3b&0&UID4352".to_owned(),
         stretch_width: 2088,
         stretch_height: 1440,
         refresh_hz: 144,
@@ -189,6 +184,15 @@ mod tests {
         let config = Config::from_toml(&reduced).unwrap();
         assert!(config.toggle_monitor);
         assert_eq!(config.start_timeout_secs, DEFAULT_START_TIMEOUT_SECS);
+    }
+
+    #[test]
+    fn ignores_old_monitor_id() {
+        let text = format!(
+            "monitor_instance_id = 'DISPLAY\\X'\n{}",
+            sample().to_toml().unwrap()
+        );
+        assert_eq!(Config::from_toml(&text).unwrap(), sample());
     }
 
     #[test]

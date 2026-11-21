@@ -15,9 +15,10 @@ True stretched works like this:
 
 1. A custom resolution with a narrower width (for example 1568 x 1080 on a
    1920 x 1080 monitor) exists in the graphics driver.
-2. The monitor device is disabled in the Device Manager. Windows then uses the
-   display without the monitor's EDID data, so the game accepts the custom
-   mode as a "real" desktop resolution.
+2. The monitor devices are disabled in the Device Manager. Windows then uses
+   the display without the monitor's EDID data, so the game accepts the custom
+   mode as a "real" desktop resolution. widepeek disables **all** monitor
+   devices: with one monitor still enabled, the game opens on that monitor.
 3. The desktop is set to the custom mode before the game starts. The GPU
    stretches the picture to the full panel.
 
@@ -43,7 +44,7 @@ can never be higher than the native refresh rate.
 1. Download `widepeek.exe` from the [releases](../../releases) and run
    `widepeek setup`. The wizard runs unelevated.
    Setup:
-   - asks which monitor to use and stores its device ID,
+   - asks which display to stretch,
    - creates the custom resolution (NVIDIA, automatic; see below),
    - copies the exe to `C:\Program Files\widepeek\` and creates the scheduled
      tasks `\widepeek\MonitorOff`, `\widepeek\MonitorOn` and
@@ -74,7 +75,7 @@ can never be higher than the native refresh rate.
 | `widepeek` / `launch` | Stretch, start Valorant, wait for the game to end, restore (default) |
 | `widepeek tray`       | Stay in the tray, stretch when `VALORANT.exe` starts (optional)     |
 | `widepeek setup`      | One-time setup; options `--width`, `--height`, `--hz`, `--display`, `--yes` |
-| `widepeek restore`    | Restore the native mode and enable the monitor. Safe to run any time |
+| `widepeek restore`    | Restore the native mode and enable the monitors. Safe to run any time |
 | `widepeek uninstall`  | Restore, then remove tasks, shortcuts, autostart, files and config  |
 
 `monitor-off` and `monitor-on` are internal. The scheduled tasks call them.
@@ -82,13 +83,15 @@ can never be higher than the native refresh rate.
 ## How the launcher works
 
 1. If the last session did not end cleanly, restore it first.
-2. Write a state file with the native mode.
-3. Disable the monitor (scheduled task with highest privileges).
+2. Write a state file with the native mode, the modes of the other displays
+   and the list of enabled monitor devices.
+3. Disable all monitor devices (scheduled task with highest privileges).
 4. Test the stretched mode with `CDS_TEST`, then apply it to the registry.
 5. Start the Riot Client with `--launch-product=valorant --launch-patchline=live`.
 6. Wait for `VALORANT-Win64-Shipping.exe` (process list every 1 s, timeout 5 min).
 7. Wait for the game to end: check the process list every 5 s.
-8. Restore the native mode, enable the monitor, delete the state file.
+8. Enable the monitor devices, restore the native mode and the modes of the
+   other displays, delete the state file.
 
 widepeek and the Riot Client run **unelevated**. Only the monitor toggle runs
 elevated, through the scheduled tasks.
@@ -126,13 +129,16 @@ Only one session can run at a time (named mutexes).
 - The elevated steps (`install-system`, `uninstall-system`) only touch
   `C:\Program Files\widepeek` and the `\widepeek` task folder. They never
   write the config, the state file or the log in your user profile.
+- The elevated `monitor-off` and `monitor-on` read no file. They disable all
+  enabled or enable all disabled Monitor-class devices. So `monitor-on` also
+  enables a monitor device that you disabled yourself.
 - Setup copies the running image, not the file at its path, so a file that
   another process puts at that path during setup is not installed.
 - The administrator prompt must use the same Windows account as the wizard.
 - The exe links the C runtime statically and loads DLLs only from `System32`,
   so a planted DLL next to the download is not loaded.
 
-## Side effects while the monitor is disabled
+## Side effects while the monitors are disabled
 
 While the game runs, Windows sees the display without its EDID. This has
 side effects:
@@ -197,8 +203,10 @@ the default install path.
   `start /wait widepeek launch` in cmd. PowerShell users can use
   `Start-Process widepeek -ArgumentList launch -Wait`.
 - Only Valorant. Only NVIDIA for the automatic custom resolution.
-- One monitor is stretched. On multi-monitor systems, choose the game monitor
-  in setup.
+- One display is stretched. On multi-monitor systems, choose the game display
+  in setup. All monitor devices are disabled during the game, so the other
+  displays lose their EDID modes too. widepeek sets their modes back after the
+  game.
 
 ## Build
 
