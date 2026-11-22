@@ -91,9 +91,15 @@ impl Command {
     }
 
     /// Commands that print to the console that started them. The tray stays
-    /// detached so that closing the console does not end it.
+    /// detached so that closing the console does not end it. Commands that
+    /// ask questions stay detached too: the shell does not wait for a GUI
+    /// binary, so it would read the same keyboard input. Setup opens a console
+    /// of its own, uninstall asks in a dialog.
     pub fn uses_parent_console(&self) -> bool {
-        !matches!(self, Self::Tray)
+        !matches!(
+            self,
+            Self::Tray | Self::Setup(SetupArgs { yes: false, .. }) | Self::Uninstall { yes: false }
+        )
     }
 
     /// The elevated commands do not write into the user-writable log
@@ -273,6 +279,16 @@ mod tests {
             Command::Restore { at_logon: true }
         );
         assert!(p(&["restore", "--bogus"]).is_err());
+    }
+
+    #[test]
+    fn commands_that_ask_questions_do_not_share_the_parent_console() {
+        assert!(!p(&["setup"]).unwrap().uses_parent_console());
+        assert!(!p(&["uninstall"]).unwrap().uses_parent_console());
+        assert!(!p(&["tray"]).unwrap().uses_parent_console());
+        assert!(p(&["setup", "--yes"]).unwrap().uses_parent_console());
+        assert!(p(&["uninstall", "--yes"]).unwrap().uses_parent_console());
+        assert!(p(&["launch"]).unwrap().uses_parent_console());
     }
 
     #[test]
