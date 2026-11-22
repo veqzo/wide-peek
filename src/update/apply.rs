@@ -23,8 +23,8 @@ use crate::{cli, elevation, paths, system};
 /// - a signature on the new exe must be valid,
 /// - if the current exe is signed, the new exe must have the same subject.
 ///
-/// One certificate can sign many projects (SignPath Foundation), so this is
-/// not the main check. The main check is the SHA-256 of the release.
+/// The releases are not signed at the moment, so this is not the main check.
+/// The main check is the SHA-256 of the release.
 pub fn check_signer(
     new_file: &File,
     new_path: &Path,

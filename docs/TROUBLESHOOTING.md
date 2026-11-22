@@ -228,6 +228,20 @@ The automatic check writes its errors only to the log. A manual check
 To install by hand, download `widepeek.exe` from the release page and run
 `widepeek setup` with it.
 
+## SmartScreen or the antivirus blocks widepeek
+
+The release exe is not signed. SmartScreen and some antivirus programs warn
+about unsigned exes, most of the time as a false positive.
+
+1. Compare `(Get-FileHash .\widepeek.exe).Hash` with `widepeek.exe.sha256` of
+   the release.
+2. Scan the exe on [VirusTotal](https://www.virustotal.com), or search for its
+   SHA-256 there.
+3. SmartScreen: click *More info* > *Run anyway*. Antivirus: restore the exe
+   from quarantine and add an exception for it.
+
+See [Unsigned releases](../README.md#unsigned-releases).
+
 ---
 
 ## Still stuck?

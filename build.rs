@@ -1,7 +1,7 @@
 //! Compiles the Windows resources: icon, manifest and version info.
 //!
 //! The resource script is generated, so the version info always matches the
-//! version in `Cargo.toml`. Code signing checks the product name and version.
+//! version in `Cargo.toml`.
 
 use std::env;
 use std::fmt::Write as _;

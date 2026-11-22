@@ -57,9 +57,9 @@ for you, and it never leaves your PC in a broken state.
 ## Quick start
 
 1. **Download** `widepeek.exe` from the [releases](../../releases).
-   The releases are not signed yet (see
-   [Code signing policy](#code-signing-policy)). Windows SmartScreen can show
-   a warning. Compare the output of `(Get-FileHash .\widepeek.exe).Hash` with
+   The releases are not signed (see [Unsigned releases](#unsigned-releases)).
+   Windows SmartScreen or your antivirus can show a warning. Compare the
+   output of `(Get-FileHash .\widepeek.exe).Hash` with
    `widepeek.exe.sha256` of the release, then click *More info* >
    *Run anyway*.
 2. **Run setup** once and follow the wizard:
@@ -238,8 +238,8 @@ session runs.
 3. The SHA-256 of the exe matches `widepeek.exe.sha256` of the release.
 4. If the installed exe is signed, the new exe must have a valid signature
    with the same certificate subject. An unsigned exe cannot replace a signed
-   one. The SignPath Foundation certificate signs many open-source projects,
-   so this check only adds to the SHA-256 check.
+   one. The releases are not signed at the moment, so the SHA-256 check is
+   the main check.
 5. The elevated step runs the **installed** exe from
    `C:\Program Files\widepeek`, not the download. It gets only the path, the
    version and your account from the unelevated caller. It refuses a version
@@ -349,24 +349,28 @@ cargo build --release
 The exe is at `target\release\widepeek.exe`. CI builds, lints and tests every
 push and attaches the exe to tagged releases.
 
-## Code signing policy
+## Unsigned releases
 
-> **Status:** The application to the SignPath Foundation is waiting for
-> approval. Until then, all releases are unsigned. The first release after
-> the approval is the first signed one.
+The release exe has no code signing certificate. Because of this:
 
-Free code signing provided by [SignPath.io](https://about.signpath.io),
-certificate by [SignPath Foundation](https://signpath.org).
+- Windows SmartScreen can show *Windows protected your PC*. Click
+  *More info* > *Run anyway*.
+- Some antivirus programs can flag or block the exe. Most of the time
+  this is a false positive. Unsigned tools that change display settings
+  and ask for admin rights often get flagged.
 
-- Committers and reviewers: [veqzo](https://github.com/veqzo)
-- Approvers: [veqzo](https://github.com/veqzo)
+To check the exe yourself:
 
-Only the release exe that CI builds from a tag in this repository is signed.
-Each signing request needs a manual approval. The signed exe shows
-*SignPath Foundation* as the publisher. Maintainer steps are in
-[docs/SIGNING.md](docs/SIGNING.md).
+1. Compare `(Get-FileHash .\widepeek.exe).Hash` with `widepeek.exe.sha256`
+   of the release. CI builds the exe from the tag in this repository and
+   creates the SHA-256 file.
+2. Upload the exe to [VirusTotal](https://www.virustotal.com) or search for
+   its SHA-256 there. VirusTotal scans the file with many antivirus engines.
+3. Or [build it from source](#building-from-source).
 
-**Privacy:** This program will not transfer any information to other networked
+## Privacy
+
+This program will not transfer any information to other networked
 systems unless specifically requested by the user or the person installing or
 operating it.
 
