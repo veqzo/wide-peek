@@ -1,6 +1,6 @@
 [package]
 name = "widepeek"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 rust-version = "1.85"
 description = "Launches Valorant in true stretched resolution and always restores the display afterwards"
