@@ -18,6 +18,7 @@ mod instance;
 mod launcher;
 mod monitor;
 mod paths;
+mod pending_delete;
 mod process;
 mod restore;
 mod riot;

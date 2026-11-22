@@ -22,7 +22,7 @@ use windows::Win32::System::ProcessStatus::GetMappedFileNameW;
 use windows::Win32::System::Threading::GetCurrentProcess;
 
 use crate::monitor::tasks;
-use crate::{cli, elevation, paths};
+use crate::{cli, elevation, paths, pending_delete};
 
 /// Runs the elevated part of setup: in this process if it is elevated,
 /// otherwise in an elevated copy. Returns the installed exe.
@@ -67,6 +67,10 @@ pub fn install_here(user_sid: &str) -> anyhow::Result<PathBuf> {
              account with administrator rights."
         );
     }
+    // An uninstall without a reboot leaves the exe and the folder marked for
+    // deletion. Without this, the reboot would delete the new install.
+    pending_delete::cancel(&[paths::installed_exe()?, paths::install_dir()?])
+        .context("cannot keep the new exe. Restart Windows and run setup again.")?;
     let exe = install_exe()?;
     tasks::install(&exe, user_sid)?;
     Ok(exe)
