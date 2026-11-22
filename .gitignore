@@ -2,3 +2,6 @@
 *.log
 .env*
 !.env.example
+
+# Local research notes, not part of the repository
+/research/
