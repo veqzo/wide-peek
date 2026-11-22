@@ -39,13 +39,17 @@ list first.
 | Aspect Ratio Method | **Fill** |
 
 **In the NVIDIA Control Panel** (Display > Adjust desktop size and position),
-for the stretched display:
+for the stretched display. Setup sets these values, so you do not need to
+change them:
 
 | Setting | Value |
 |---|---|
 | Scaling mode | **Full-screen** |
 | Perform scaling on | **GPU** |
-| Override the scaling mode set by games and programs | **On** |
+
+The checkbox **Override the scaling mode set by games and programs** is not
+necessary with Windowed Fullscreen, because the game does not set its own
+display mode. widepeek does not change this checkbox.
 
 **In Windows** (Settings > System > Display > Graphics):
 
@@ -68,14 +72,21 @@ You see black bars at the sides, or the picture has the native aspect ratio.
    Valorant from the Riot Client directly, nothing is stretched.
 2. **Check the Valorant settings.** Aspect Ratio Method must be **Fill**.
 3. **Check the NVIDIA scaling.** Scaling mode must be **Full-screen** on the
-   **GPU**, with the override on. Some drivers do not accept the stretch flag
-   from Windows. The log then has this line:
+   **GPU**. Setup sets this. If you declined the change in setup, set it by
+   hand or run `widepeek setup` again. Some drivers do not accept the stretch
+   flag from Windows. The log then has this line:
 
    ```text
    stretched scaling is not accepted, using the GPU scaling setting
    ```
 
-   In that case, the NVIDIA setting alone decides the scaling.
+   In that case, the NVIDIA setting alone decides the scaling. If the log has
+   `cannot check the NVIDIA GPU scaling` or `cannot set the NVIDIA GPU
+   scaling`, widepeek cannot change the setting. Set it by hand.
+
+   If you use exclusive **Fullscreen** in Valorant, also turn on **Override
+   the scaling mode set by games and programs**. widepeek does not set this
+   checkbox.
 4. **Check that the monitors were disabled.** The log must show
    `disable N monitor device(s)` and `N monitor device(s) are now Disabled`.
    If not, see [UAC prompt](#a-uac-prompt-comes-at-every-start).

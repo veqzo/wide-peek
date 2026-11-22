@@ -17,7 +17,7 @@ use crate::instance::{self, InstanceLock};
 use crate::monitor::device::DeviceStatus;
 use crate::restore::{self, Target};
 use crate::state::{self, SavedDisplay, State};
-use crate::{display, monitor};
+use crate::{customres, display, monitor};
 
 /// The target of the running session. All restore paths take it under this
 /// lock, so the display is restored exactly once.
@@ -59,6 +59,9 @@ impl StretchSession {
             Vec::new()
         };
         let others = other_displays(name);
+        if config.gpu_scaling_before.is_some() {
+            customres::keep_gpu_scaling(name);
+        }
 
         // Hold the lock during the changes. A restore from another thread
         // (tray menu, console handler, end of the Windows session) waits and

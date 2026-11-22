@@ -36,6 +36,11 @@ pub struct Config {
     /// widepeek sends nothing over the network unless the user turns it on.
     #[serde(default)]
     pub check_updates: bool,
+    /// The NVIDIA scaling (`NV_SCALING`) before setup set it to Full-screen
+    /// on the GPU. `Some` means that widepeek manages the scaling: a session
+    /// sets it again if the driver lost it, and uninstall restores this value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_scaling_before: Option<i32>,
 }
 
 fn default_true() -> bool {
@@ -92,6 +97,12 @@ impl Config {
         }
         if !(10..=3600).contains(&self.start_timeout_secs) {
             bail!("start_timeout_secs must be between 10 and 3600");
+        }
+        // The values of `NV_SCALING` in the NVAPI SDK.
+        if let Some(value) = self.gpu_scaling_before
+            && !matches!(value, 0..=8 | 255)
+        {
+            bail!("gpu_scaling_before ({value}) is not an NVIDIA scaling value");
         }
         Ok(())
     }
@@ -161,6 +172,7 @@ pub fn sample() -> Config {
         start_timeout_secs: DEFAULT_START_TIMEOUT_SECS,
         tray_autostart: false,
         check_updates: false,
+        gpu_scaling_before: None,
     }
 }
 
@@ -203,6 +215,29 @@ mod tests {
             .map(|l| format!("{l}\n"))
             .collect();
         assert!(!Config::from_toml(&text).unwrap().check_updates);
+    }
+
+    #[test]
+    fn round_trips_the_gpu_scaling() {
+        let mut config = sample();
+        config.gpu_scaling_before = Some(6);
+        let text = config.to_toml().unwrap();
+        assert!(text.contains("gpu_scaling_before = 6"));
+        assert_eq!(Config::from_toml(&text).unwrap(), config);
+    }
+
+    #[test]
+    fn old_configs_do_not_manage_the_gpu_scaling() {
+        let text = sample().to_toml().unwrap();
+        assert!(!text.contains("gpu_scaling_before"));
+        assert_eq!(Config::from_toml(&text).unwrap().gpu_scaling_before, None);
+    }
+
+    #[test]
+    fn rejects_unknown_gpu_scaling() {
+        let mut config = sample();
+        config.gpu_scaling_before = Some(42);
+        assert!(config.validate().is_err());
     }
 
     #[test]

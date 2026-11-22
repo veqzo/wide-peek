@@ -12,8 +12,12 @@ use windows::Win32::System::LibraryLoader::{
 };
 use windows::core::{s, w};
 
+mod scaling;
+
 use super::CustomResBackend;
 use crate::display::DisplayMode;
+
+pub use scaling::SCALING_GPU_FULL_SCREEN;
 
 const ID_INITIALIZE: u32 = 0x0150_e828;
 const ID_UNLOAD: u32 = 0xd22b_dd7e;

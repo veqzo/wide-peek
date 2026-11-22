@@ -52,6 +52,17 @@ fn wizard(args: &SetupArgs) -> anyhow::Result<()> {
     let native = native_mode(&screen.name)?;
     let stretch = pick_stretch(args, native, interactive)?;
     customres::ensure_mode(&screen.name, native, stretch, interactive)?;
+    // The value from the first change stays, so uninstall restores the
+    // setting from before widepeek.
+    let managed_before = previous
+        .as_ref()
+        .filter(|c| c.display_name == screen.name)
+        .and_then(|c| c.gpu_scaling_before);
+    let gpu_scaling_before = match customres::ensure_gpu_scaling(&screen.name, interactive) {
+        customres::GpuScaling::Changed { before } => managed_before.or(Some(before)),
+        customres::GpuScaling::Declined => None,
+        customres::GpuScaling::Untouched => managed_before,
+    };
 
     let tray_autostart = if interactive {
         console::confirm(
@@ -88,6 +99,7 @@ fn wizard(args: &SetupArgs) -> anyhow::Result<()> {
             .map_or(config::DEFAULT_START_TIMEOUT_SECS, |c| c.start_timeout_secs),
         tray_autostart,
         check_updates,
+        gpu_scaling_before,
     };
     console::println(
         "

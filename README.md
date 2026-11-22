@@ -77,9 +77,9 @@ for you, and it never leaves your PC in a broken state.
    | Resolution | The stretched mode, for example `2088x1440` |
    | Aspect Ratio Method | **Fill** |
 
-4. **Set the NVIDIA scaling once** (Display > Adjust desktop size and
-   position): **Full-screen**, perform scaling on **GPU**, and turn on
-   **Override the scaling mode set by games and programs**.
+4. **Check the GPU scaling.** On NVIDIA, setup sets it for you:
+   **Full-screen**, perform scaling on **GPU**. You do not need to open the
+   NVIDIA Control Panel. On AMD and Intel, setup shows the manual steps.
 5. **Play** with the shortcut **Valorant (widepeek)** on the desktop or in the
    Start menu.
 
@@ -115,6 +115,13 @@ higher than the native refresh rate.
     refresh rate or pixel clock than the native mode.
   - **AMD / Intel:** setup shows the manual steps for the driver panel, then
     checks that Windows lists the mode.
+- Sets the GPU scaling:
+  - **NVIDIA:** automatic through NVAPI: *Full-screen*, scaling on the *GPU*.
+    Setup shows a dialog and keeps the setting only when you click *Yes*.
+    Without an answer within 15 seconds, the old setting comes back. If a
+    driver update resets the setting, the next session sets it again.
+    Uninstall restores the setting from before setup.
+  - **AMD / Intel:** setup shows the manual steps.
 - Installs the exe to `C:\Program Files\widepeek\` and creates the scheduled
   tasks `\widepeek\MonitorOff`, `\widepeek\MonitorOn` and
   `\widepeek\RestoreAtLogon`. Only this step needs administrator rights, so
