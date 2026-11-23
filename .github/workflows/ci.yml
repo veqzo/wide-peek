@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Third-party actions are pinned to commits: they run in the job that
       # builds the release exe. Dependabot updates the pins.
