@@ -36,7 +36,7 @@ for you, and it never leaves your PC in a broken state.
 | Before each game | Device Manager + resolution change | Click the shortcut |
 | After each game | Undo everything by hand | Automatic |
 | Crash, power loss, kill | Display stays stretched | Restored at the next logon |
-| Custom resolution | Create by hand in the driver panel | Created by setup (NVIDIA) |
+| Custom resolution | Create by hand in the driver panel | Created by setup (NVIDIA, AMD) |
 | UAC prompts | Every time | Once, at setup |
 
 ## Features
@@ -45,8 +45,8 @@ for you, and it never leaves your PC in a broken state.
   game and restores after it.
 - 🛡️ **Always restores.** Normal exit, error, logoff, crash or power loss: the
   display comes back to native. See [Restore guarantees](#restore-guarantees).
-- 🎯 **Automatic custom resolution** on NVIDIA through NVAPI, with a 15-second
-  confirm dialog and safe CVT-RB timings.
+- 🎯 **Automatic custom resolution** on NVIDIA (NVAPI) and AMD (ADLX), with a
+  15-second confirm dialog and safe CVT-RB timings.
 - 🔒 **Hands off the game.** No handle to the game process, no memory access,
   no injection. See [Safety](#safety-and-anti-cheat).
 - 🪶 **Tiny.** One static exe, about 1.5 MB of memory, close to zero CPU.
@@ -77,9 +77,10 @@ for you, and it never leaves your PC in a broken state.
    | Resolution | The stretched mode, for example `2088x1440` |
    | Aspect Ratio Method | **Fill** |
 
-4. **Check the GPU scaling.** On NVIDIA, setup sets it for you:
-   **Full-screen**, perform scaling on **GPU**. You do not need to open the
-   NVIDIA Control Panel. On AMD and Intel, setup shows the manual steps.
+4. **Check the GPU scaling.** On NVIDIA and AMD, setup sets it for you.
+   NVIDIA: **Full-screen**, perform scaling on **GPU**. AMD: **GPU Scaling**
+   on, **Scaling Mode** Full panel, **Integer Scaling** off. You do not need
+   to open the driver panel. On Intel, setup shows the manual steps.
 5. **Play** with the shortcut **Valorant (widepeek)** on the desktop or in the
    Start menu.
 
@@ -108,20 +109,29 @@ higher than the native refresh rate.
 ### What setup does
 
 - Asks which display to stretch.
-- Creates the custom resolution:
-  - **NVIDIA:** automatic through NVAPI. Setup tries the mode, shows a dialog,
-    and saves the mode only when you click *Yes*. Without an answer within
-    15 seconds, the old mode comes back. Setup rejects timings with a higher
-    refresh rate or pixel clock than the native mode.
-  - **AMD / Intel:** setup shows the manual steps for the driver panel, then
-    checks that Windows lists the mode.
-- Sets the GPU scaling:
+- Sets the GPU scaling first, because the AMD driver needs it for the
+  stretched test. If setup fails later, the old setting comes back:
   - **NVIDIA:** automatic through NVAPI: *Full-screen*, scaling on the *GPU*.
     Setup shows a dialog and keeps the setting only when you click *Yes*.
     Without an answer within 15 seconds, the old setting comes back. If a
     driver update resets the setting, the next session sets it again.
     Uninstall restores the setting from before setup.
-  - **AMD / Intel:** setup shows the manual steps.
+  - **AMD:** automatic through ADLX: *GPU Scaling* on, *Scaling Mode* Full
+    panel, *Integer Scaling* off. The dialog, the session check and the
+    uninstall restore work as on NVIDIA.
+  - **Intel:** setup shows the manual steps.
+- Creates the custom resolution:
+  - **NVIDIA:** automatic through NVAPI. Setup tries the mode, shows a dialog,
+    and saves the mode only when you click *Yes*. Without an answer within
+    15 seconds, the old mode comes back. Setup rejects timings with a higher
+    refresh rate or pixel clock than the native mode.
+  - **AMD:** automatic through ADLX. The AMD driver saves a new mode at once,
+    so setup tries it without a registry change and deletes it again when you
+    do not click *Yes*. The same timing checks apply. If setup ends during the
+    test (crash, closed window, power loss), the next setup or uninstall
+    deletes the unconfirmed mode.
+  - **Intel:** setup shows the manual steps for the driver panel, then checks
+    that Windows lists the mode.
 - Installs the exe to `C:\Program Files\widepeek\` and creates the scheduled
   tasks `\widepeek\MonitorOff`, `\widepeek\MonitorOn` and
   `\widepeek\RestoreAtLogon`. Only this step needs administrator rights, so
@@ -341,8 +351,10 @@ the default install path.
 ## Known limitations
 
 - Only Valorant.
-- Automatic custom resolution only on NVIDIA. AMD and Intel need one manual
+- Automatic custom resolution only on NVIDIA and AMD. Intel needs one manual
   step in the driver panel.
+- AMD: Eyefinity and duplicated displays are not supported. Setup then shows
+  the manual steps.
 - One display is stretched. All monitor devices are disabled during the game,
   so the other displays lose their EDID modes too. widepeek sets their modes
   back after the game.

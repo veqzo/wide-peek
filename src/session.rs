@@ -59,8 +59,8 @@ impl StretchSession {
             Vec::new()
         };
         let others = other_displays(name);
-        if config.gpu_scaling_before.is_some() {
-            customres::keep_gpu_scaling(name);
+        if let Some(before) = config.scaling_before() {
+            customres::keep_gpu_scaling(name, before);
         }
 
         // Hold the lock during the changes. A restore from another thread

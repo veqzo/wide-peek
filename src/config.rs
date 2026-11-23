@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
 
+use crate::customres::{AMD_SCALING_MODE_MAX, AmdScaling, ScalingBefore};
 use crate::display::DisplayMode;
 use crate::paths;
 
@@ -41,6 +42,10 @@ pub struct Config {
     /// sets it again if the driver lost it, and uninstall restores this value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gpu_scaling_before: Option<i32>,
+    /// The AMD scaling before setup set GPU Scaling on with Full panel.
+    /// Same meaning as `gpu_scaling_before`. At most one of both is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amd_scaling_before: Option<AmdScaling>,
 }
 
 fn default_true() -> bool {
@@ -68,6 +73,13 @@ impl Config {
             hz: self.refresh_hz,
             bpp: self.native_bpp,
         }
+    }
+
+    /// The scaling from before setup, if widepeek manages the scaling.
+    pub fn scaling_before(&self) -> Option<ScalingBefore> {
+        self.gpu_scaling_before
+            .map(ScalingBefore::Nvidia)
+            .or(self.amd_scaling_before.map(ScalingBefore::Amd))
     }
 
     pub fn validate(&self) -> anyhow::Result<()> {
@@ -103,6 +115,17 @@ impl Config {
             && !matches!(value, 0..=8 | 255)
         {
             bail!("gpu_scaling_before ({value}) is not an NVIDIA scaling value");
+        }
+        if let Some(amd) = self.amd_scaling_before
+            && !(0..=AMD_SCALING_MODE_MAX).contains(&amd.mode)
+        {
+            bail!(
+                "amd_scaling_before.mode ({}) is not an AMD scaling mode",
+                amd.mode
+            );
+        }
+        if self.gpu_scaling_before.is_some() && self.amd_scaling_before.is_some() {
+            bail!("set only one of gpu_scaling_before and amd_scaling_before");
         }
         Ok(())
     }
@@ -173,6 +196,7 @@ pub fn sample() -> Config {
         tray_autostart: false,
         check_updates: false,
         gpu_scaling_before: None,
+        amd_scaling_before: None,
     }
 }
 
@@ -237,6 +261,54 @@ mod tests {
     fn rejects_unknown_gpu_scaling() {
         let mut config = sample();
         config.gpu_scaling_before = Some(42);
+        assert!(config.validate().is_err());
+    }
+
+    fn amd_scaling() -> AmdScaling {
+        AmdScaling {
+            enabled: false,
+            mode: 0,
+            integer: true,
+        }
+    }
+
+    #[test]
+    fn round_trips_the_amd_scaling() {
+        let mut config = sample();
+        config.amd_scaling_before = Some(amd_scaling());
+        let text = config.to_toml().unwrap();
+        assert!(text.contains("amd_scaling_before"));
+        let read = Config::from_toml(&text).unwrap();
+        assert_eq!(read, config);
+        assert_eq!(
+            read.scaling_before(),
+            Some(ScalingBefore::Amd(amd_scaling()))
+        );
+    }
+
+    #[test]
+    fn merges_the_scaling_by_vendor() {
+        let mut config = sample();
+        assert_eq!(config.scaling_before(), None);
+        config.gpu_scaling_before = Some(6);
+        assert_eq!(config.scaling_before(), Some(ScalingBefore::Nvidia(6)));
+    }
+
+    #[test]
+    fn rejects_unknown_amd_scaling_mode() {
+        let mut config = sample();
+        config.amd_scaling_before = Some(AmdScaling {
+            mode: 3,
+            ..amd_scaling()
+        });
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_scaling_of_two_vendors() {
+        let mut config = sample();
+        config.gpu_scaling_before = Some(6);
+        config.amd_scaling_before = Some(amd_scaling());
         assert!(config.validate().is_err());
     }
 

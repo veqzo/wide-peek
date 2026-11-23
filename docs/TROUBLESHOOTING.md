@@ -71,8 +71,9 @@ You see black bars at the sides, or the picture has the native aspect ratio.
 1. **Start the game with the shortcut "Valorant (widepeek)".** If you start
    Valorant from the Riot Client directly, nothing is stretched.
 2. **Check the Valorant settings.** Aspect Ratio Method must be **Fill**.
-3. **Check the NVIDIA scaling.** Scaling mode must be **Full-screen** on the
-   **GPU**. Setup sets this. If you declined the change in setup, set it by
+3. **Check the GPU scaling.** NVIDIA: Scaling mode must be **Full-screen** on
+   the **GPU**. AMD: **GPU Scaling** on, **Scaling Mode** Full panel,
+   **Integer Scaling** off. Setup sets this. If you declined the change in setup, set it by
    hand or run `widepeek setup` again. Some drivers do not accept the stretch
    flag from Windows. The log then has this line:
 
@@ -80,9 +81,11 @@ You see black bars at the sides, or the picture has the native aspect ratio.
    stretched scaling is not accepted, using the GPU scaling setting
    ```
 
-   In that case, the NVIDIA setting alone decides the scaling. If the log has
-   `cannot check the NVIDIA GPU scaling` or `cannot set the NVIDIA GPU
-   scaling`, widepeek cannot change the setting. Set it by hand.
+   In that case, the driver setting alone decides the scaling. The AMD
+   driver needs GPU Scaling on for the stretch. If the log has
+   `cannot check the NVIDIA GPU scaling` or `cannot set the AMD GPU
+   scaling` (or the same for the other vendor), widepeek cannot change the
+   setting. Set it by hand.
 
    If you use exclusive **Fullscreen** in Valorant, also turn on **Override
    the scaling mode set by games and programs**. widepeek does not set this
@@ -105,7 +108,7 @@ The abilities, the minimap or the chat are partly outside the screen.
 - **The game window is on another display.** Valorant also stores the window
   position. If the window was on a second display before, it can open with an
   offset. Set **Monitor** to the main display in Valorant.
-- **The NVIDIA scaling is not Full-screen.** See
+- **The GPU scaling is not Full-screen (NVIDIA) or Full panel (AMD).** See
   [Recommended settings](#recommended-settings).
 
 widepeek never edits `GameUserSettings.ini`. You can check the values there
@@ -157,12 +160,18 @@ position.
 | `the NVIDIA driver rejected ... (NVAPI_ERROR)` | Create the mode once by hand: NVIDIA Control Panel > Change resolution > Customize > Create Custom Resolution. Use the timing **CVT reduced blank**. Then run `widepeek setup` again. |
 | `the driver saved ..., but Windows does not list it yet` | Reboot, then run `widepeek setup` again. |
 | `the custom resolution was not confirmed, the old mode is back` | You did not click *Yes* within 15 seconds. Run setup again. |
+| `custom resolution cancelled` | You answered *n* at `Continue?`. Run setup again and press Enter. The screen can go black for a few seconds, then the old mode comes back on its own. |
 | `... Hz is above the native ... Hz` | widepeek never sets a higher refresh rate than the native one. Use `--hz` with the native rate or lower. |
 | `the computed pixel clock ... is above the native ...` | The chosen mode needs more bandwidth than the native mode. Use a smaller width or a lower refresh rate. |
-| AMD or Intel GPU | Setup shows the manual steps for the driver panel. Create the mode there, then run `widepeek setup` again. |
+| `the AMD driver rejected ...`, `the AMD driver offers no custom resolutions` or `the AMD driver cannot create ...` | Open AMD Software > Gaming > Display > Custom Resolutions once and accept the agreement. Then run `widepeek setup` again, or create the mode there with the timing **CVT-RB**. |
+| `no AMD ADLX support: ... ADLX_NOT_SUPPORTED` (log) | The driver has no ADLX support for this display. Update AMD Software, or create the mode by hand. |
+| `no AMD ADLX support: ... ADLX desktops ...` or `... (Eyefinity or duplicate)` (log) | widepeek cannot map the Windows display to one AMD display. Turn off Eyefinity or display duplication, or create the mode by hand. |
+| Intel GPU | Setup shows the manual steps for the driver panel. Create the mode there, then run `widepeek setup` again. |
 
 If the picture stays black during the 15-second test, do nothing. The old mode
-comes back automatically.
+comes back automatically. On AMD, if setup ended during the test, the next
+setup prints `Deleted the unconfirmed custom resolution ...`. That is
+expected.
 
 ## The display stays stretched or a monitor stays disabled
 

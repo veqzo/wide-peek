@@ -52,6 +52,12 @@ pub fn state_file() -> anyhow::Result<PathBuf> {
     Ok(data_dir()?.join("state.json"))
 }
 
+/// An AMD custom resolution that setup created, but the user did not
+/// confirm yet.
+pub fn amd_pending_file() -> anyhow::Result<PathBuf> {
+    Ok(data_dir()?.join("amd-pending.json"))
+}
+
 /// Time of the last update check.
 pub fn update_stamp_file() -> anyhow::Result<PathBuf> {
     Ok(data_dir()?.join("update.json"))

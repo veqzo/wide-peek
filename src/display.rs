@@ -195,6 +195,16 @@ fn check(code: DISP_CHANGE, what: &str, mode: DisplayMode) -> anyhow::Result<()>
 /// resolution outside the EDID is not in the monitor list. `CDS_TEST` still
 /// checks it before the change.
 pub fn apply_mode(device: &str, mode: DisplayMode, stretch: bool) -> anyhow::Result<()> {
+    set_mode(device, mode, stretch, CDS_UPDATEREGISTRY)
+}
+
+/// Like `apply_mode`, but without a registry change. A crash or a reboot
+/// gives the mode from the registry back. `revert_to_registry` ends it.
+pub fn apply_mode_temporary(device: &str, mode: DisplayMode, stretch: bool) -> anyhow::Result<()> {
+    set_mode(device, mode, stretch, CDS_TYPE(0))
+}
+
+fn set_mode(device: &str, mode: DisplayMode, stretch: bool, flags: CDS_TYPE) -> anyhow::Result<()> {
     let filter = if stretch {
         ModeFilter::Driver
     } else {
@@ -219,8 +229,49 @@ pub fn apply_mode(device: &str, mode: DisplayMode, stretch: bool) -> anyhow::Res
     }
 
     check(change(&wide, &dm, CDS_TEST), "testing", mode)?;
-    check(change(&wide, &dm, CDS_UPDATEREGISTRY), "applying", mode)?;
+    check(change(&wide, &dm, flags), "applying", mode)?;
     Ok(())
+}
+
+/// Sets the display back to the mode in the registry, after
+/// `apply_mode_temporary`.
+pub fn revert_to_registry(device: &str) -> anyhow::Result<()> {
+    let wide = to_wide(device);
+    // SAFETY: `device` is NUL-terminated. A null DEVMODEW means "use the
+    // registry settings".
+    let code =
+        unsafe { ChangeDisplaySettingsExW(PCWSTR(wide.as_ptr()), None, None, CDS_TYPE(0), None) };
+    if code == DISP_CHANGE_SUCCESSFUL {
+        Ok(())
+    } else {
+        bail!(
+            "cannot restore the registry mode of {device}: {} ({})",
+            describe(code),
+            code.0
+        )
+    }
+}
+
+/// The position and size of the display on the Windows desktop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DesktopRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+pub fn desktop_rect(device: &str) -> anyhow::Result<DesktopRect> {
+    let dm = enum_settings(&to_wide(device), ENUM_CURRENT_SETTINGS, ModeFilter::Monitor)
+        .with_context(|| format!("cannot read the current mode of {device}"))?;
+    // SAFETY: for a display device, the union holds the display fields.
+    let position = unsafe { dm.Anonymous1.Anonymous2.dmPosition };
+    Ok(DesktopRect {
+        x: position.x,
+        y: position.y,
+        width: dm.dmPelsWidth,
+        height: dm.dmPelsHeight,
+    })
 }
 
 /// Applies a mode and checks the result. A display that is busy (for example

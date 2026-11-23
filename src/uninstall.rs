@@ -21,6 +21,7 @@ pub fn run(yes: bool) -> anyhow::Result<()> {
     // Restore while the monitor tasks still exist.
     restore::run(false).context("cannot restore the display, nothing was removed")?;
     restore_gpu_scaling();
+    customres::clean_up_pending();
     if !elevation::is_elevated() {
         console::println("Uninstall needs administrator rights. Confirm the Windows prompt.");
     }
@@ -39,23 +40,23 @@ pub fn run(yes: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Sets the NVIDIA scaling back to the value from before setup. A failure
+/// Sets the GPU scaling back to the value from before setup. A failure
 /// does not stop the uninstall: the user can set the value by hand.
 fn restore_gpu_scaling() {
     let Some(config) = config::load_lenient() else {
         return;
     };
-    let Some(before) = config.gpu_scaling_before else {
+    let Some(before) = config.scaling_before() else {
         return;
     };
     match customres::restore_gpu_scaling(&config.display_name, before) {
-        Ok(()) => info!("restored the NVIDIA scaling {before}"),
+        Ok(()) => info!("restored the {before}"),
         Err(err) => {
-            warn!("cannot restore the NVIDIA scaling {before}: {err:#}");
-            show(
-                "widepeek cannot restore the old GPU scaling. Set it in the NVIDIA \
-                 Control Panel > Display > Adjust desktop size and position.",
-            );
+            warn!("cannot restore the {before}: {err:#}");
+            show(&format!(
+                "widepeek cannot restore the old GPU scaling ({before}). Set it in {}.",
+                before.settings_location()
+            ));
         }
     }
 }
