@@ -54,6 +54,9 @@ pub struct DisplayInfo {
     pub name: String,
     /// Monitor name from the EDID, for example `LG ULTRAGEAR`. Can be empty.
     pub monitor_name: String,
+    /// Device path of the connected monitor. Unlike the GDI name, it stays
+    /// the same after a driver update or a reboot. Can be empty.
+    pub monitor_path: String,
     pub primary: bool,
 }
 
@@ -324,23 +327,47 @@ pub fn displays() -> Vec<DisplayInfo> {
             continue;
         }
         let name = from_wide(&dd.DeviceName);
-        let monitor_name = targets
+        let target = targets
             .iter()
-            .find(|(source, _)| source.eq_ignore_ascii_case(&name))
-            .map(|(_, friendly)| friendly.clone())
-            .unwrap_or_default();
+            .find(|t| t.source.eq_ignore_ascii_case(&name));
         result.push(DisplayInfo {
             primary: dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE == DISPLAY_DEVICE_PRIMARY_DEVICE,
-            monitor_name,
+            monitor_name: target.map(|t| t.friendly.clone()).unwrap_or_default(),
+            monitor_path: target.map(|t| t.monitor_path.clone()).unwrap_or_default(),
             name,
         });
     }
     result
 }
 
-/// Maps each active GDI source name to the monitor name, using the display
+/// The GDI name of the display that shows the monitor with this device
+/// path. `None` if the monitor is not active or if its device is disabled.
+pub fn display_of_monitor(monitor_path: &str) -> Option<String> {
+    target_names()
+        .into_iter()
+        .find(|t| !t.monitor_path.is_empty() && t.monitor_path.eq_ignore_ascii_case(monitor_path))
+        .map(|t| t.source)
+}
+
+/// The device path of the monitor on the display `name`.
+pub fn monitor_of_display(name: &str) -> Option<String> {
+    target_names()
+        .into_iter()
+        .find(|t| t.source.eq_ignore_ascii_case(name))
+        .map(|t| t.monitor_path)
+        .filter(|path| !path.is_empty())
+}
+
+/// An active GDI source and the monitor that it shows.
+struct TargetName {
+    source: String,
+    friendly: String,
+    monitor_path: String,
+}
+
+/// Maps each active GDI source name to its monitor, using the display
 /// configuration API.
-fn target_names() -> Vec<(String, String)> {
+fn target_names() -> Vec<TargetName> {
     let mut paths: Vec<DISPLAYCONFIG_PATH_INFO> = Vec::new();
     let mut modes: Vec<DISPLAYCONFIG_MODE_INFO> = Vec::new();
     // The configuration can change between the two calls, so retry.
@@ -402,11 +429,10 @@ fn target_names() -> Vec<(String, String)> {
                 DisplayConfigGetDeviceInfo(&mut source.header) == 0
                     && DisplayConfigGetDeviceInfo(&mut target.header) == 0
             };
-            ok.then(|| {
-                (
-                    from_wide(&source.viewGdiDeviceName),
-                    from_wide(&target.monitorFriendlyDeviceName),
-                )
+            ok.then(|| TargetName {
+                source: from_wide(&source.viewGdiDeviceName),
+                friendly: from_wide(&target.monitorFriendlyDeviceName),
+                monitor_path: from_wide(&target.monitorDevicePath),
             })
         })
         .collect()

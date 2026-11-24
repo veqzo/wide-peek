@@ -321,6 +321,11 @@ process and adds a dependency. Toolhelp gives the same result with fewer parts.
 | `%LocalAppData%\widepeek\update.json` | Time of the last update check |
 | `%LocalAppData%\widepeek\update\` | Only while an update installs |
 
+The config stores the GDI name of the display (`display_name`) and the device
+path of its monitor (`monitor_path`). If Windows gives the display another
+name, for example after a driver update, widepeek finds it again through the
+monitor path.
+
 The config has a `riot_client_path` option. If it is set and the file exists,
 widepeek uses it. Otherwise it reads `RiotClientInstalls.json`, then it uses
 the default install path.
