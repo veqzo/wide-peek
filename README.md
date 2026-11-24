@@ -155,6 +155,8 @@ monitor still enabled, the game opens on that monitor.
 4. Test the stretched mode with `CDS_TEST`, then apply it.
 5. Start the Riot Client with `--launch-product=valorant --launch-patchline=live`.
 6. Wait for `VALORANT-Win64-Shipping.exe` (process list every 1 s, timeout 5 min).
+   If the Riot Client and `VALORANT.exe` end before the game starts, go to
+   step 8 after about 10 s.
 7. Wait for the game to end (process list every 5 s).
 8. Enable the monitor devices, restore the native mode and the modes of the
    other displays, delete the state file.

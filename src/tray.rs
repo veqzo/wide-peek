@@ -12,7 +12,7 @@ mod updates;
 
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Context;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
@@ -32,6 +32,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{HSTRING, PCWSTR, w};
 
+use crate::game::{self, Start};
 use crate::process;
 use crate::session::{self, StretchSession};
 use crate::window::{self, HiddenWindow};
@@ -40,11 +41,6 @@ use updates::Job;
 
 /// The trigger poll. One snapshot costs well below 1 ms of CPU.
 const POLL: Duration = Duration::from_secs(2);
-const START_POLL: Duration = Duration::from_secs(1);
-const EXIT_POLL: Duration = Duration::from_secs(5);
-/// The session ends if neither Valorant process runs for this many polls
-/// before the game starts (the user cancelled the start).
-const GONE_POLLS: u32 = 5;
 
 const TIMER_ID: usize = 1;
 const ICON_ID: u32 = 1;
@@ -369,49 +365,20 @@ fn run_session(on_stretched: impl Fn()) -> anyhow::Result<()> {
     let session = StretchSession::begin(&config)?;
     on_stretched();
     let timeout = Duration::from_secs(config.start_timeout_secs);
-    let Some(pid) = wait_for_game(timeout)? else {
-        info!("Valorant ended before the game started");
-        return session.finish();
+    let sleep = |duration| {
+        std::thread::sleep(duration);
+        Ok(())
     };
-    info!("{} started (pid {pid})", riot::GAME_PROCESS);
-    wait_for_exit(pid);
-    info!("{} ended", riot::GAME_PROCESS);
+    // The session starts when VALORANT.exe starts, so only it counts.
+    match game::wait_for_start(timeout, &[riot::BOOTSTRAP_PROCESS], sleep)? {
+        Start::Running(pid) => {
+            info!("{} started (pid {pid})", riot::GAME_PROCESS);
+            game::wait_for_exit(pid, sleep)?;
+            info!("{} ended", riot::GAME_PROCESS);
+        }
+        Start::Cancelled => info!("Valorant ended before the game started"),
+    }
     session.finish()
-}
-
-/// Polls for the game process. `None` if the start was cancelled.
-fn wait_for_game(timeout: Duration) -> anyhow::Result<Option<u32>> {
-    let deadline = Instant::now() + timeout;
-    let mut gone = 0;
-    loop {
-        if let Some(pid) = process::find(riot::GAME_PROCESS) {
-            return Ok(Some(pid));
-        }
-        if process::find(riot::BOOTSTRAP_PROCESS).is_some() {
-            gone = 0;
-        } else {
-            gone += 1;
-            if gone >= GONE_POLLS {
-                return Ok(None);
-            }
-        }
-        if Instant::now() >= deadline {
-            anyhow::bail!(
-                "{} did not start within {} s",
-                riot::GAME_PROCESS,
-                timeout.as_secs()
-            );
-        }
-        std::thread::sleep(START_POLL);
-    }
-}
-
-/// Polls the process list until the game ends. widepeek never opens a
-/// handle to the game process (anti-cheat rule).
-fn wait_for_exit(pid: u32) {
-    while process::is_running(pid, riot::GAME_PROCESS) {
-        std::thread::sleep(EXIT_POLL);
-    }
 }
 
 fn show_menu(hwnd: HWND) {

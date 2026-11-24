@@ -13,7 +13,7 @@ pub const GAME_PROCESS: &str = "VALORANT-Win64-Shipping.exe";
 pub const BOOTSTRAP_PROCESS: &str = "VALORANT.exe";
 pub const LAUNCH_ARGS: [&str; 2] = ["--launch-product=valorant", "--launch-patchline=live"];
 
-const CLIENT_EXE: &str = "RiotClientServices.exe";
+pub const CLIENT_EXE: &str = "RiotClientServices.exe";
 const DEFAULT_CLIENT: &str = r"C:\Riot Games\Riot Client\RiotClientServices.exe";
 const DEFAULT_GAME_DIR: &str = r"C:\Riot Games\VALORANT\live";
 

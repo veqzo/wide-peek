@@ -14,6 +14,7 @@ mod console;
 mod customres;
 mod display;
 mod elevation;
+mod game;
 mod instance;
 mod launcher;
 mod monitor;
