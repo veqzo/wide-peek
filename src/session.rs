@@ -23,6 +23,10 @@ use crate::{customres, display, monitor};
 /// lock, so the display is restored exactly once.
 static ACTIVE: Mutex<Option<Target>> = Mutex::new(None);
 
+/// How long a new session waits for the session lock. Right after a logon,
+/// the `RestoreAtLogon` task can hold it for a few seconds.
+const SESSION_LOCK_WAIT: Duration = Duration::from_secs(30);
+
 /// Set by `close` under the `ACTIVE` lock. After it, no session can start, so
 /// a process that ends right after `close` never leaves a stretched display.
 static CLOSED: AtomicBool = AtomicBool::new(false);
@@ -36,7 +40,7 @@ impl StretchSession {
     /// Starts the session. If a step fails, the guard is already active and
     /// restores what was changed.
     pub fn begin(config: &Config) -> anyhow::Result<Self> {
-        let lock = instance::try_acquire(instance::SESSION)?
+        let lock = instance::acquire_within(instance::SESSION, SESSION_LOCK_WAIT)?
             .context("another widepeek session is active")?;
 
         if state::exists() {
