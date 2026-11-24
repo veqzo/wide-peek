@@ -117,7 +117,7 @@ pub fn run() -> anyhow::Result<()> {
     // Fail early with a clear message if setup did not run.
     config::load_required()?;
     if state::exists() {
-        restore::run(false).context("cannot restore the last session")?;
+        restore::run_stale(false).context("cannot restore the last session")?;
     }
 
     let window = HiddenWindow::create("widepeek-tray", Some(tray_proc))?;

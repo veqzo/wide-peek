@@ -7,6 +7,7 @@ use anyhow::bail;
 
 use crate::config::{self, Config};
 use crate::display::{self, DisplayMode};
+use crate::instance;
 use crate::monitor::{self, device::DeviceStatus};
 use crate::state::{self, SavedDisplay, State};
 
@@ -53,6 +54,18 @@ fn disabled_monitors() -> Vec<String> {
         warn!("cannot list the monitor devices: {err:#}");
         Vec::new()
     })
+}
+
+/// Restores a session that did not end cleanly, but only when no session
+/// runs. A running session holds the session lock and restores itself. For
+/// the `RestoreAtLogon` task and the tray start, which can run at the same
+/// time as a launcher that just started a new session.
+pub fn run_stale(at_logon: bool) -> anyhow::Result<()> {
+    let Some(_lock) = instance::try_acquire(instance::SESSION)? else {
+        info!("a widepeek session is active, it restores itself");
+        return Ok(());
+    };
+    run(at_logon)
 }
 
 /// `widepeek restore`. With `at_logon`, it does nothing when the display is
