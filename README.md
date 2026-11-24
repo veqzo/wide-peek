@@ -1,23 +1,16 @@
 <div align="center">
 
-# widepeek
+<img src="docs/assets/hero.svg" width="100%" alt="widepeek: true stretched for Valorant. One click to play, always back to native.">
 
-**True stretched for Valorant. One click to play, always back to native.**
+<a href="https://github.com/veqzo/wide-peek/releases/latest"><img src="docs/assets/button-download.svg" height="48" alt="Download for Windows"></a>&nbsp;
+<a href="#quick-start"><img src="docs/assets/button-quickstart.svg" height="48" alt="Quick start"></a>
 
-[![CI](https://github.com/veqzo/wide-peek/actions/workflows/ci.yml/badge.svg)](https://github.com/veqzo/wide-peek/actions/workflows/ci.yml)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?logo=windows)
-![Rust](https://img.shields.io/badge/rust-1.85%2B-DEA584?logo=rust)
-![License](https://img.shields.io/badge/license-MIT-blue)
-
-[Quick start](#quick-start) ·
 [How it works](#how-it-works) ·
 [Commands](#commands) ·
 [Safety](#safety-and-anti-cheat) ·
 [Troubleshooting](docs/TROUBLESHOOTING.md)
 
 </div>
-
----
 
 widepeek is one small `widepeek.exe` for Windows. It switches your display to
 a true stretched resolution, starts Valorant, and restores your display when
@@ -33,35 +26,34 @@ for you, and it never leaves your PC in a broken state.
 
 | | Manual routine | widepeek |
 |---|---|---|
-| Before each game | Device Manager + resolution change | Click the shortcut |
-| After each game | Undo everything by hand | Automatic |
-| Crash, power loss, kill | Display stays stretched | Restored at the next logon |
-| Custom resolution | Create by hand in the driver panel | Created by setup (NVIDIA, AMD) |
-| UAC prompts | Every time | Once, at setup |
+| **Before each game** | Device Manager + resolution change | Click the shortcut |
+| **After each game** | Undo everything by hand | Automatic |
+| **Crash, power loss, kill** | Display stays stretched | Restored at the next logon |
+| **Custom resolution** | Create by hand in the driver panel | Created by setup (NVIDIA, AMD) |
+| **UAC prompts** | Every time | Once, at setup |
 
 ## Features
 
-- ⚡ **One click.** The shortcut *Valorant (widepeek)* stretches, starts the
-  game and restores after it.
-- 🛡️ **Always restores.** Normal exit, error, logoff, crash or power loss: the
+- **One click.** The shortcut *Valorant (widepeek)* stretches, starts the game
+  and restores after it.
+- **Always restores.** Normal exit, error, logoff, crash or power loss: the
   display comes back to native. See [Restore guarantees](#restore-guarantees).
-- 🎯 **Automatic custom resolution** on NVIDIA (NVAPI) and AMD (ADLX), with a
+- **Automatic custom resolution** on NVIDIA (NVAPI) and AMD (ADLX), with a
   15-second confirm dialog and safe CVT-RB timings.
-- 🔒 **Hands off the game.** No handle to the game process, no memory access,
+- **Hands off the game.** No handle to the game process, no memory access,
   no injection. See [Safety](#safety-and-anti-cheat).
-- 🪶 **Tiny.** One static exe, about 1.5 MB of memory, close to zero CPU.
-- 🖥️ **Multi-monitor aware.** All displays get their modes back after the game.
-- 🔄 **Updates in the app.** Optional daily check. widepeek asks, then installs
+- **Tiny.** One static exe, about 1.5 MB of memory, close to zero CPU.
+- **Multi-monitor aware.** All displays get their modes back after the game.
+- **Updates in the app.** Optional daily check. widepeek asks, then installs
   the new release with one UAC prompt. See [Updates](#updates).
 
 ## Quick start
 
 1. **Download** `widepeek.exe` from the [releases](../../releases).
-   The releases are not signed (see [Unsigned releases](#unsigned-releases)).
-   Windows SmartScreen or your antivirus can show a warning. Compare the
-   output of `(Get-FileHash .\widepeek.exe).Hash` with
-   `widepeek.exe.sha256` of the release, then click *More info* >
-   *Run anyway*.
+   The releases are not signed (see [Unsigned releases](#unsigned-releases)),
+   so SmartScreen or your antivirus can show a warning. Compare
+   `(Get-FileHash .\widepeek.exe).Hash` with `widepeek.exe.sha256` of the
+   release, then click *More info* > *Run anyway*.
 2. **Run setup** once and follow the wizard:
 
    ```powershell
@@ -74,13 +66,13 @@ for you, and it never leaves your PC in a broken state.
    |---|---|
    | Display Mode | **Windowed Fullscreen** |
    | Monitor | The display that you chose in setup |
-   | Resolution | The stretched mode, for example `2088x1440` |
+   | Resolution | The stretched mode, for example `2088 × 1440` |
    | Aspect Ratio Method | **Fill** |
 
-4. **Check the GPU scaling.** On NVIDIA and AMD, setup sets it for you.
-   NVIDIA: **Full-screen**, perform scaling on **GPU**. AMD: **GPU Scaling**
-   on, **Scaling Mode** Full panel, **Integer Scaling** off. You do not need
-   to open the driver panel. On Intel, setup shows the manual steps.
+4. **Check the GPU scaling.** On NVIDIA and AMD, setup sets it for you
+   (NVIDIA: **Full-screen**, scaling on **GPU**. AMD: **GPU Scaling** on,
+   **Scaling Mode** Full panel, **Integer Scaling** off). On Intel, setup
+   shows the manual steps.
 5. **Play** with the shortcut **Valorant (widepeek)** on the desktop or in the
    Start menu.
 
@@ -95,18 +87,13 @@ Something does not look right? Read the
 ### Recommended resolution
 
 widepeek suggests **width = native height × 1.45**, rounded to a multiple of 8.
-The height and the refresh rate stay native.
+The height and the refresh rate stay native. Use `widepeek setup --width <px>`
+for another width.
 
-| Native | Suggested stretch |
-|---|---|
-| 1920 × 1080 | 1568 × 1080 |
-| 2560 × 1440 | 2088 × 1440 |
-| 3440 × 1440 | 2088 × 1440 |
+<img src="docs/assets/resolutions.svg" width="100%" alt="Suggested stretch: 1920 × 1080 becomes 1568 × 1080, 2560 × 1440 becomes 2088 × 1440, 3440 × 1440 becomes 2088 × 1440.">
 
-Use `widepeek setup --width <px>` for another width. The refresh rate is never
-higher than the native refresh rate.
-
-### What setup does
+<details>
+<summary><b>What setup does</b></summary>
 
 - Asks which display to stretch.
 - Sets the GPU scaling first, because the AMD driver needs it for the
@@ -139,6 +126,8 @@ higher than the native refresh rate.
 - Creates the shortcut **Valorant (widepeek)** on the desktop and in the Start
   menu.
 - Asks if widepeek may check for updates once per day. The default is *No*.
+
+</details>
 
 ## How it works
 
@@ -199,8 +188,8 @@ elevated, through the scheduled tasks.
 
 `widepeek tray` stays in the notification area. It checks the process list
 every 2 s and stretches when `VALORANT.exe` starts. The menu has a status line,
-*Restore now*, *Check for updates* and *Quit*. Setup can add it to the autostart (unelevated,
-`HKCU\...\Run`).
+*Restore now*, *Check for updates* and *Quit*. Setup can add it to the
+autostart (unelevated, `HKCU\...\Run`).
 
 The launcher is the recommended way. The tray stretches only after
 `VALORANT.exe` started, so the game can already read the native resolution.
@@ -220,30 +209,24 @@ Your PC must never stay in the stretched mode or with a disabled monitor.
 | widepeek killed, PC crash, power loss | `RestoreAtLogon` restores at the next logon; the next start restores first |
 | Anything else | `widepeek restore`, or the tray item *Restore now* |
 
-Windows stores the display mode in the registry, so after a reboot the PC can
-start in the stretched mode for about 5 seconds until `RestoreAtLogon` runs.
-`restore` also works without a config and without a state file: then it
+After a reboot, the PC can start in the stretched mode for about 5 seconds
+until `RestoreAtLogon` runs, because Windows stores the display mode in the
+registry. `restore` also works without a config or a state file: then it
 enables all disabled monitor devices and sets each display to its best mode.
 Only one session runs at a time (named mutexes).
 
 ## Updates
 
-widepeek can find and install a new release itself, so you do not have to
-check GitHub.
-
-- **Automatic check (opt-in).** Setup asks once. If you say *Yes*, widepeek
-  checks at most once per day: the launcher after the game ended, the tray in
-  the background. To change it, run `widepeek setup` again or set
-  `check_updates` in the config.
-- **Manual check.** `widepeek update`, or *Check for updates* in the tray menu.
-  This works also when the automatic check is off.
-- **Install.** widepeek shows the new version and the link to the release
-  notes. On *Yes* it downloads the exe, then you confirm one UAC prompt.
+The automatic check is opt-in: setup asks once, and if you say *Yes*, widepeek
+checks at most once per day. You can always check by hand with
+`widepeek update` or *Check for updates* in the tray. widepeek shows the new
+version and its release notes, and installs only after you click *Yes* and
+confirm one UAC prompt. It never updates while Valorant or a stretch session
+runs.
 
 The check reads `releases/latest` of this repository from the GitHub API over
-HTTPS. It sends no data about you or your PC. Like for any web page, GitHub
-sees your IP address. widepeek never updates while Valorant or a stretch
-session runs.
+HTTPS and sends no data about you or your PC. Like for any web page, GitHub
+sees your IP address.
 
 <details>
 <summary><b>What widepeek checks before it installs</b></summary>
@@ -279,6 +262,10 @@ session runs.
 > the normal Windows display API and the Device Manager API, used before the
 > game starts and after it ended. widepeek never edits `GameUserSettings.ini`.
 
+While the monitors are disabled, Windows sees the display without its EDID:
+G-Sync / FreeSync are off, ICC color profiles and HDR are not available, and
+the monitor shows a generic name. Everything comes back when widepeek restores.
+
 <details>
 <summary><b>Security details</b></summary>
 
@@ -300,19 +287,6 @@ session runs.
 
 </details>
 
-### Side effects during a session
-
-While the monitors are disabled, Windows sees the display without its EDID:
-
-- **G-Sync / FreeSync** are off.
-- **ICC color profiles** do not apply.
-- **HDR** is not available.
-- The monitor shows a generic name in Windows.
-
-Everything comes back when widepeek restores.
-
-## Performance
-
 <details>
 <summary><b>Measured overhead</b> (release build, Windows 11, 12 logical cores, about 210 processes)</summary>
 
@@ -333,7 +307,8 @@ process and adds a dependency. Toolhelp gives the same result with fewer parts.
 
 </details>
 
-## Files
+<details>
+<summary><b>Files</b></summary>
 
 | Path | Content |
 |---|---|
@@ -348,6 +323,8 @@ The config has a `riot_client_path` option. If it is set and the file exists,
 widepeek uses it. Otherwise it reads `RiotClientInstalls.json`, then it uses
 the default install path.
 
+</details>
+
 ## Known limitations
 
 - Only Valorant.
@@ -359,41 +336,27 @@ the default install path.
   so the other displays lose their EDID modes too. widepeek sets their modes
   back after the game.
 
-## Building from source
-
-```powershell
-cargo build --release
-```
-
-The exe is at `target\release\widepeek.exe`. CI builds, lints and tests every
-push and attaches the exe to tagged releases.
-
 ## Unsigned releases
 
-The release exe has no code signing certificate. Because of this:
-
-- Windows SmartScreen can show *Windows protected your PC*. Click
-  *More info* > *Run anyway*.
-- Some antivirus programs can flag or block the exe. Most of the time
-  this is a false positive. Unsigned tools that change display settings
-  and ask for admin rights often get flagged.
-
-To check the exe yourself:
+The release exe has no code signing certificate, so SmartScreen can show
+*Windows protected your PC* (click *More info* > *Run anyway*), and some
+antivirus programs can flag the exe. Most of the time this is a false
+positive: unsigned tools that change display settings and ask for admin rights
+often get flagged. To check the exe yourself:
 
 1. Compare `(Get-FileHash .\widepeek.exe).Hash` with `widepeek.exe.sha256`
    of the release. CI builds the exe from the tag in this repository and
    creates the SHA-256 file.
 2. Upload the exe to [VirusTotal](https://www.virustotal.com) or search for
-   its SHA-256 there. VirusTotal scans the file with many antivirus engines.
-3. Or [build it from source](#building-from-source).
+   its SHA-256 there.
+3. Or build it from source with `cargo build --release`. The exe is at
+   `target\release\widepeek.exe`.
 
-## Privacy
+## Privacy and disclaimer
 
-This program will not transfer any information to other networked
-systems unless specifically requested by the user or the person installing or
+This program will not transfer any information to other networked systems
+unless specifically requested by the user or the person installing or
 operating it.
-
-## Disclaimer
 
 widepeek is not made by, endorsed by or associated with Riot Games. Valorant
 and Riot Client are trademarks of Riot Games, Inc. widepeek changes display
@@ -401,6 +364,8 @@ settings and disables devices in the Device Manager. Use it at your own risk.
 The authors are not responsible for bans, display problems or other damage.
 Riot can change what is allowed at any time.
 
-## License
+---
 
-[MIT](LICENSE)
+<div align="center">
+<sub><b>widepeek</b> · <a href="LICENSE">MIT license</a> · Not affiliated with Riot Games. Valorant is a trademark of Riot Games.</sub>
+</div>
