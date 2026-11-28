@@ -50,8 +50,8 @@ fn launch() -> anyhow::Result<Config> {
     process::spawn_detached(&client, &riot::LAUNCH_ARGS)?;
 
     let timeout = Duration::from_secs(config.start_timeout_secs);
-    // The Riot Client runs first, then VALORANT.exe, then the game.
-    let starters = [riot::CLIENT_EXE, riot::BOOTSTRAP_PROCESS];
+    let starters = riot::start_processes(&client);
+    let starters: Vec<&str> = starters.iter().map(String::as_str).collect();
     match game::wait_for_start(timeout, &starters, window::sleep)? {
         Start::Running(pid) => {
             info!("{} started (pid {pid})", riot::GAME_PROCESS);
