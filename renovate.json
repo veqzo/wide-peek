@@ -1,0 +1,63 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":semanticCommitTypeAll(chore)",
+    ":semanticCommitScopeDisabled"
+  ],
+  "timezone": "Europe/Berlin",
+  "schedule": [
+    "* 0-5 * * 1"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "platformAutomerge": false,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "packageRules": [
+    {
+      "description": "Automerge non-major updates of stable crates when CI passes",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchCurrentVersion": "!/^v?0\\./",
+      "automerge": true
+    },
+    {
+      "description": "Major updates and 0.x minor updates need a manual review",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "addLabels": [
+        "major"
+      ]
+    },
+    {
+      "description": "Actions run in the job that builds the release exe: no automerge",
+      "groupName": "github actions",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "automerge": false
+    }
+  ]
+}
