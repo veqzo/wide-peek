@@ -1,6 +1,6 @@
 //! `widepeek launch`: stretch, start Valorant, wait for its end, restore.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, bail};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -11,13 +11,11 @@ use windows::Win32::System::Console::{
 use windows::core::BOOL;
 
 use crate::config::{self, Config};
+use crate::game::{self, Start};
 use crate::process;
 use crate::session::{self, StretchSession};
 use crate::window::{self, HiddenWindow};
 use crate::{console, instance, riot, ui, update};
-
-const START_POLL: Duration = Duration::from_secs(1);
-const EXIT_POLL: Duration = Duration::from_secs(5);
 
 pub fn run() -> anyhow::Result<()> {
     let config = launch()?;
@@ -52,39 +50,18 @@ fn launch() -> anyhow::Result<Config> {
     process::spawn_detached(&client, &riot::LAUNCH_ARGS)?;
 
     let timeout = Duration::from_secs(config.start_timeout_secs);
-    let pid = wait_for_start(timeout)?;
-    info!("{} started (pid {pid})", riot::GAME_PROCESS);
-    wait_for_exit(pid)?;
-    info!("{} ended", riot::GAME_PROCESS);
+    let starters = riot::start_processes(&client);
+    let starters: Vec<&str> = starters.iter().map(String::as_str).collect();
+    match game::wait_for_start(timeout, &starters, window::sleep)? {
+        Start::Running(pid) => {
+            info!("{} started (pid {pid})", riot::GAME_PROCESS);
+            game::wait_for_exit(pid, window::sleep)?;
+            info!("{} ended", riot::GAME_PROCESS);
+        }
+        Start::Cancelled => info!("the Riot Client ended before the game started"),
+    }
     session.finish()?;
     Ok(config)
-}
-
-/// Polls for the game process once per second and keeps the window alive.
-fn wait_for_start(timeout: Duration) -> anyhow::Result<u32> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(pid) = process::find(riot::GAME_PROCESS) {
-            return Ok(pid);
-        }
-        if Instant::now() >= deadline {
-            bail!(
-                "{} did not start within {} s",
-                riot::GAME_PROCESS,
-                timeout.as_secs()
-            );
-        }
-        window::sleep(START_POLL)?;
-    }
-}
-
-/// Polls the process list until the game ends. widepeek never opens a
-/// handle to the game process (anti-cheat rule).
-fn wait_for_exit(pid: u32) -> anyhow::Result<()> {
-    while process::is_running(pid, riot::GAME_PROCESS) {
-        window::sleep(EXIT_POLL)?;
-    }
-    Ok(())
 }
 
 extern "system" fn launcher_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

@@ -77,6 +77,12 @@ pub fn run(at_logon: bool) -> anyhow::Result<()> {
         info!("logon check: nothing to restore");
         return Ok(());
     }
+    if let Some(state) = &state {
+        info!(
+            "restoring the session from the state file ({})",
+            state.origin()
+        );
+    }
     let target = state
         .as_ref()
         .map(Target::from_state)
