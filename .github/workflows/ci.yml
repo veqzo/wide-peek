@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v7
 
       # Third-party actions are pinned to commits: they run in the job that
-      # builds the release exe. Dependabot updates the pins.
+      # builds the release exe. Renovate updates the pins.
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
