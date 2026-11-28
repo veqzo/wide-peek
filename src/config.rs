@@ -6,7 +6,7 @@ use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::customres::{AMD_SCALING_MODE_MAX, AmdScaling, ScalingBefore};
-use crate::display::DisplayMode;
+use crate::display::{self, DisplayMode};
 use crate::paths;
 
 pub const DEFAULT_START_TIMEOUT_SECS: u64 = 300;
@@ -15,6 +15,10 @@ pub const DEFAULT_START_TIMEOUT_SECS: u64 = 300;
 pub struct Config {
     /// GDI name of the display, for example `\\.\DISPLAY1`.
     pub display_name: String,
+    /// Device path of the monitor. Windows can give the display another GDI
+    /// name after a driver update, so `load` finds the name with this path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor_path: Option<String>,
     pub stretch_width: u32,
     pub stretch_height: u32,
     pub refresh_hz: u32,
@@ -145,8 +149,14 @@ impl Config {
     }
 }
 
-/// Reads the config. A missing file gives `None`.
+/// Reads the config. A missing file gives `None`. If the monitor now has
+/// another GDI name, the config has the new name.
 pub fn load() -> anyhow::Result<Option<Config>> {
+    Ok(read()?.map(locate_display))
+}
+
+/// Reads the config file without a change.
+fn read() -> anyhow::Result<Option<Config>> {
     let path = paths::config_file()?;
     match std::fs::read_to_string(&path) {
         Ok(text) => Config::from_toml(&text)
@@ -174,6 +184,64 @@ pub fn load_lenient() -> Option<Config> {
     }
 }
 
+/// Uses the GDI name of the display that shows the monitor of the config.
+/// If the monitor is not active, the name from the file stays.
+fn locate_display(config: Config) -> Config {
+    let Some(path) = &config.monitor_path else {
+        return config;
+    };
+    match display::display_of_monitor(path) {
+        Some(name) if !name.eq_ignore_ascii_case(&config.display_name) => {
+            warn!(
+                "the monitor of {} is now on {name}, using {name}",
+                config.display_name
+            );
+            Config {
+                display_name: name,
+                ..config
+            }
+        }
+        _ => config,
+    }
+}
+
+/// Stores the GDI name and the monitor path of the display in the config
+/// file when they changed, so that an older config also gets the monitor
+/// path. Call it while the monitor device is enabled. Errors only
+/// give a warning: the session does not need the file change.
+pub fn remember_display(config: &Config) {
+    let Some(path) = display::monitor_of_display(&config.display_name) else {
+        return;
+    };
+    let result = read().and_then(|stored| {
+        let Some(stored) = stored else {
+            return Ok(());
+        };
+        let same_name = stored
+            .display_name
+            .eq_ignore_ascii_case(&config.display_name);
+        let same_path = stored
+            .monitor_path
+            .as_deref()
+            .is_some_and(|p| p.eq_ignore_ascii_case(&path));
+        if same_name && same_path {
+            return Ok(());
+        }
+        info!(
+            "storing the monitor of {} in the config",
+            config.display_name
+        );
+        save(&Config {
+            display_name: config.display_name.clone(),
+            monitor_path: Some(path),
+            ..stored
+        })
+    });
+    if let Err(err) = result {
+        warn!("cannot store the monitor in the config: {err:#}");
+    }
+}
+
 pub fn save(config: &Config) -> anyhow::Result<()> {
     config.validate()?;
     paths::write_atomic(&paths::config_file()?, config.to_toml()?.as_bytes())
@@ -183,6 +251,7 @@ pub fn save(config: &Config) -> anyhow::Result<()> {
 pub fn sample() -> Config {
     Config {
         display_name: r"\\.\DISPLAY1".to_owned(),
+        monitor_path: None,
         stretch_width: 2088,
         stretch_height: 1440,
         refresh_hz: 144,
@@ -203,6 +272,17 @@ pub fn sample() -> Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn round_trips_the_monitor_path() {
+        let config = Config {
+            monitor_path: Some(r"\\?\DISPLAY#GSM5B7F#5&1&0&UID4352#{e6f07b5f}".to_owned()),
+            ..sample()
+        };
+        let text = config.to_toml().unwrap();
+        assert_eq!(Config::from_toml(&text).unwrap(), config);
+        assert!(!sample().to_toml().unwrap().contains("monitor_path"));
+    }
 
     #[test]
     fn round_trips_through_toml() {

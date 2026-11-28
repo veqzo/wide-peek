@@ -51,6 +51,9 @@ impl StretchSession {
         let name = &config.display_name;
         let current = display::current_mode(name)
             .with_context(|| format!("display {name} from the config is not active"))?;
+        // Before the monitor devices go off: then Windows no longer knows
+        // the monitor.
+        crate::config::remember_display(config);
         let native = config.native_mode();
         let stretch = config.stretch_mode();
         if current != native {

@@ -47,6 +47,21 @@ pub fn find(exe_name: &str) -> Option<u32> {
     find_in_snapshot(|_, name| name.eq_ignore_ascii_case(exe_name))
 }
 
+/// One snapshot: for each name, the PID of the first process with this exe
+/// name (case-insensitive), in the order of `names`.
+pub fn find_each(names: &[&str]) -> Vec<Option<u32>> {
+    let mut found = vec![None; names.len()];
+    find_in_snapshot(|pid, exe| {
+        for (slot, name) in found.iter_mut().zip(names) {
+            if slot.is_none() && exe.eq_ignore_ascii_case(name) {
+                *slot = Some(pid);
+            }
+        }
+        false
+    });
+    found
+}
+
 /// True if `pid` still runs with this exe name. The name check protects
 /// against a reused PID.
 pub fn is_running(pid: u32, exe_name: &str) -> bool {

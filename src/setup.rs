@@ -83,6 +83,7 @@ fn wizard(args: &SetupArgs) -> anyhow::Result<()> {
 
     let config = Config {
         display_name: screen.name.clone(),
+        monitor_path: Some(screen.monitor_path.clone()).filter(|p| !p.is_empty()),
         stretch_width: stretch.width,
         stretch_height: stretch.height,
         refresh_hz: stretch.hz,

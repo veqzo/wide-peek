@@ -13,7 +13,7 @@ pub const GAME_PROCESS: &str = "VALORANT-Win64-Shipping.exe";
 pub const BOOTSTRAP_PROCESS: &str = "VALORANT.exe";
 pub const LAUNCH_ARGS: [&str; 2] = ["--launch-product=valorant", "--launch-patchline=live"];
 
-const CLIENT_EXE: &str = "RiotClientServices.exe";
+pub const CLIENT_EXE: &str = "RiotClientServices.exe";
 const DEFAULT_CLIENT: &str = r"C:\Riot Games\Riot Client\RiotClientServices.exe";
 const DEFAULT_GAME_DIR: &str = r"C:\Riot Games\VALORANT\live";
 
@@ -44,6 +44,20 @@ pub fn client_path(configured: Option<&Path>) -> anyhow::Result<PathBuf> {
         "cannot find {CLIENT_EXE}. Set riot_client_path in {}",
         paths::config_file().map_or_else(|_| "config.toml".to_owned(), |p| p.display().to_string())
     )
+}
+
+/// The processes that run while the game starts: the Riot Client runs
+/// first, then `VALORANT.exe`, then the game. If `riot_client_path` points
+/// to an exe with another name, that name also counts.
+pub fn start_processes(client: &Path) -> Vec<String> {
+    let mut names = vec![CLIENT_EXE.to_owned(), BOOTSTRAP_PROCESS.to_owned()];
+    let configured = client.file_name().and_then(|n| n.to_str());
+    if let Some(name) =
+        configured.filter(|name| !names.iter().any(|n| n.eq_ignore_ascii_case(name)))
+    {
+        names.push(name.to_owned());
+    }
+    names
 }
 
 /// `VALORANT.exe` of the live install, for the shortcut icon. The keys of
@@ -98,6 +112,16 @@ fn is_client(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_processes_include_a_configured_client_name() {
+        let default = start_processes(Path::new(DEFAULT_CLIENT));
+        assert_eq!(default, [CLIENT_EXE, BOOTSTRAP_PROCESS]);
+        let lower = start_processes(Path::new(r"D:\Riot\riotclientservices.exe"));
+        assert_eq!(lower, [CLIENT_EXE, BOOTSTRAP_PROCESS]);
+        let other = start_processes(Path::new(r"D:\Tools\RiotLauncher.exe"));
+        assert_eq!(other, [CLIENT_EXE, BOOTSTRAP_PROCESS, "RiotLauncher.exe"]);
+    }
 
     #[test]
     fn reads_candidates_in_order() {

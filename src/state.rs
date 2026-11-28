@@ -64,6 +64,14 @@ impl State {
         }
     }
 
+    /// The process and the age of the session, for the log.
+    pub fn origin(&self) -> String {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        describe_origin(self.pid, now.saturating_sub(self.started_at_unix))
+    }
+
     /// All monitor devices that restore must enable, also from a version 1 file.
     pub fn monitors(&self) -> Vec<String> {
         let mut ids = self.monitor_instance_ids.clone();
@@ -74,6 +82,15 @@ impl State {
         }
         ids
     }
+}
+
+fn describe_origin(pid: u32, age_secs: u64) -> String {
+    let age = match age_secs {
+        0..120 => format!("{age_secs} s"),
+        120..7200 => format!("{} min", age_secs / 60),
+        _ => format!("{} h", age_secs / 3600),
+    };
+    format!("pid {pid}, started {age} ago")
 }
 
 /// Reads the state. A missing file gives `None`.
@@ -142,6 +159,13 @@ mod tests {
         );
         let json = serde_json::to_vec(&state).unwrap();
         assert_eq!(serde_json::from_slice::<State>(&json).unwrap(), state);
+    }
+
+    #[test]
+    fn describes_the_origin() {
+        assert_eq!(describe_origin(42, 5), "pid 42, started 5 s ago");
+        assert_eq!(describe_origin(42, 600), "pid 42, started 10 min ago");
+        assert_eq!(describe_origin(42, 90_000), "pid 42, started 25 h ago");
     }
 
     #[test]
